@@ -16,6 +16,13 @@ public class RealtimeOpenSmileInput : MonoBehaviour
     [Header("Python openSMILE worker")]
     [SerializeField] private string pythonExecutable = "python3";
 
+    [Header("Local speech recognition")]
+    [Tooltip("Multilingual faster-whisper model: tiny, base, small, or a local model directory.")]
+    [SerializeField] private string whisperModel = "base";
+    [Tooltip("auto detects the spoken language; use zh or en to force a language.")]
+    [SerializeField] private string speechLanguage = "auto";
+    [SerializeField, Min(0.5f)] private float transcriptionIntervalSeconds = 2f;
+
     [Header("Microphone")]
     [SerializeField] private string microphoneDevice = "";
     [SerializeField] private int targetSampleRate = 16000;
@@ -47,6 +54,7 @@ public class RealtimeOpenSmileInput : MonoBehaviour
     private AuthorityVisualController visualController;
 
     public string LatestFeaturesJson { get; private set; }
+    public string LatestTranscript { get; private set; }
     public OpenSmileStringEvent OnFeaturesJsonReceived => onFeaturesJsonReceived;
     public bool IsRecording => capturing;
     public bool IsProcessing => awaitingAnalysis;
@@ -79,6 +87,8 @@ public class RealtimeOpenSmileInput : MonoBehaviour
     {
         public string type;
         public string message;
+        public string text;
+        public string transcript;
     }
 
     private void Awake()
@@ -176,6 +186,9 @@ public class RealtimeOpenSmileInput : MonoBehaviour
         readPosition = Mathf.Max(0, Microphone.GetPosition(activeDevice));
         recordingStartedAt = Time.realtimeSinceStartup;
         capturing = true;
+        LatestTranscript = "";
+        if (visualController != null)
+            visualController.SetSpeechText("");
         Debug.Log("RealtimeOpenSmileInput: recording started on " + activeDevice + ". Press Alpha1 again to analyze and send.", this);
     }
 
@@ -219,7 +232,10 @@ public class RealtimeOpenSmileInput : MonoBehaviour
             info.FileName = pythonExecutable;
             info.Arguments =
                 "\"" + workerPath + "\"" +
-                " --max-recording-seconds " + Mathf.Max(5, maximumRecordingSeconds);
+                " --max-recording-seconds " + Mathf.Max(5, maximumRecordingSeconds) +
+                " --whisper-model \"" + whisperModel.Replace("\"", "") + "\"" +
+                " --speech-language \"" + speechLanguage.Replace("\"", "") + "\"" +
+                " --transcription-interval " + Mathf.Max(0.5f, transcriptionIntervalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
             info.WorkingDirectory = projectRoot;
             info.UseShellExecute = false;
             info.CreateNoWindow = true;
@@ -437,6 +453,25 @@ public class RealtimeOpenSmileInput : MonoBehaviour
                     EndMicrophone();
                 }
                 Debug.LogError("openSMILE worker: " + message.message, this);
+                if (visualController != null)
+                    visualController.SetSpeechText("");
+                continue;
+            }
+
+            if (message != null && message.type == "transcript")
+            {
+                if (capturing)
+                {
+                    LatestTranscript = message.text ?? "";
+                    if (visualController != null)
+                        visualController.SetSpeechText(LatestTranscript);
+                }
+                continue;
+            }
+
+            if (message != null && message.type == "transcription_warning")
+            {
+                Debug.LogWarning("openSMILE worker: transcription preview: " + message.message, this);
                 continue;
             }
 
@@ -453,6 +488,9 @@ public class RealtimeOpenSmileInput : MonoBehaviour
             {
                 awaitingAnalysis = false;
                 LatestFeaturesJson = line;
+                LatestTranscript = message.transcript ?? "";
+                if (visualController != null)
+                    visualController.SetSpeechText(LatestTranscript, true);
                 if (logFeatureJson)
                     Debug.Log("openSMILE full-recording features: " + line, this);
                 onFeaturesJsonReceived.Invoke(line);

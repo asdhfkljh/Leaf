@@ -140,6 +140,9 @@ public sealed class VoiceDebugWindow : EditorWindow
             }
         }
         EditorGUILayout.HelpBox("也可在 Game 窗口按原先配置的录音快捷键（默认数字 1）。", MessageType.None);
+        EditorGUILayout.LabelField("语音识别文本（录音时为临时结果）", EditorStyles.boldLabel);
+        EditorGUILayout.SelectableLabel(string.IsNullOrEmpty(input.LatestTranscript) ? "等待语音…" : input.LatestTranscript,
+            EditorStyles.wordWrappedLabel, GUILayout.MinHeight(45f));
 
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("最近一次分析结果（录音期间保留上次结果）", EditorStyles.boldLabel);

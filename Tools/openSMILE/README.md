@@ -1,5 +1,26 @@
 # openSMILE voice comparison (offline)
 
+## Live transcription in Unity
+
+The real-time worker also uses local faster-whisper (CPU int8, multilingual `base` by default).
+Install `realtime_requirements.txt` in the Python environment configured in the scene.
+On first Play, the Whisper model is downloaded and cached outside the repository.
+Wait for the worker to report ready before recording. No audio is sent to a transcription service.
+
+`RealtimeOpenSmileInput` exposes Whisper Model, Speech Language (`auto`, `zh`, `en`, etc.),
+and Transcription Interval Seconds in the Inspector. Restart Play after changing these settings.
+During capture, a background decoder updates provisional text approximately every two seconds
+when the preceding decode has completed. It may revise previous words; CPU speed and recording
+length affect latency. Stop recording to decode the complete utterance and then run the existing
+voice feature classification and text effect. Empty recognition results produce an error rather
+than playing an effect on preset text. The Voice Debug window also shows the current transcript.
+
+The original text's outer effect tags are retained for the final transcript; provisional text is plain.
+The scene supplies a dynamic Noto CJK fallback font for Chinese characters. Other languages still
+require appropriate font coverage. Noto's SIL Open Font License is included beside the font.
+The Python worker remains a desktop prototype dependency; this does not package Python/models
+into a standalone Unity player.
+
 This helper extracts the eGeMAPSv02 feature set from WAV recordings. It creates:
 
 - `comparison_functionals.csv`: one row per recording with summary/functionals (88 features).

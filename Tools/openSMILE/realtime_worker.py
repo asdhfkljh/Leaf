@@ -8,8 +8,16 @@ import json
 import math
 import sys
 import warnings
+import threading
+from speech_transcription import SpeechTranscriber
 
 GENDER_MODEL = "griko/gender_cls_svm_ecapa_voxceleb"
+OUTPUT_LOCK = threading.Lock()
+
+
+def emit(packet):
+    with OUTPUT_LOCK:
+        print(json.dumps(packet, ensure_ascii=False, allow_nan=False), flush=True)
 
 
 def finite_value(value):
@@ -29,9 +37,13 @@ def main():
         import torch
         import torchaudio
         from voice_gender_classification import GenderClassificationPipeline
+        from faster_whisper import WhisperModel
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--max-recording-seconds", type=int, default=180)
+    parser.add_argument("--whisper-model", default="base")
+    parser.add_argument("--speech-language", default="auto")
+    parser.add_argument("--transcription-interval", type=float, default=2.0)
     args = parser.parse_args()
 
     with contextlib.redirect_stdout(sys.stderr):
@@ -40,12 +52,15 @@ def main():
             feature_level=opensmile.FeatureLevel.Functionals,
         )
         gender_classifier = GenderClassificationPipeline.from_pretrained(GENDER_MODEL, device="cpu")
-    print(json.dumps({"type": "ready"}), flush=True)
+        whisper = WhisperModel(args.whisper_model, device="cpu", compute_type="int8", cpu_threads=4)
+    transcriber = SpeechTranscriber(whisper, args.speech_language, emit)
+    emit({"type": "ready"})
 
     recording = False
     chunks = []
     active_rate = None
     recorded_samples = 0
+    preview_samples = 0
 
     for line in sys.stdin:
         try:
@@ -53,14 +68,18 @@ def main():
             command = packet.get("type")
 
             if command == "shutdown":
+                transcriber.close()
                 break
             if command == "start":
+                transcriber.reset()
                 chunks = []
                 active_rate = None
                 recorded_samples = 0
+                preview_samples = 0
                 recording = True
                 continue
             if command == "cancel":
+                transcriber.reset()
                 chunks = []
                 active_rate = None
                 recorded_samples = 0
@@ -88,6 +107,13 @@ def main():
                     ):
                         raise ValueError("No clear voiced speech was detected. Check the microphone and try again.")
 
+                    speech_signal = torch.from_numpy(signal.copy())
+                    if active_rate != 16000:
+                        speech_signal = torchaudio.functional.resample(speech_signal, active_rate, 16000)
+                    transcript = transcriber.finalize(speech_signal.numpy())
+                    if not transcript:
+                        raise ValueError("No speech text was recognized. Please speak clearly and try again.")
+
                     gender_waveform = torch.from_numpy(signal.copy())
                     if active_rate != 16000:
                         gender_waveform = torchaudio.functional.resample(
@@ -107,6 +133,7 @@ def main():
 
                     result = {
                         "type": "features",
+                        "transcript": transcript,
                         "speaker_gender": prediction[0],
                         "analysis_duration_seconds": duration,
                         "sample_rate": active_rate,
@@ -124,9 +151,10 @@ def main():
                         "hnr_db": finite_value(row["HNRdBACF_sma3nz_amean"]),
                         "voiced_segments_per_second": voiced_segments_per_second,
                     }
-                    print(json.dumps(result, ensure_ascii=False, allow_nan=False), flush=True)
+                    emit(result)
                 except Exception as exception:
-                    print(json.dumps({"type": "error", "message": str(exception)}, ensure_ascii=False), flush=True)
+                    transcriber.reset()
+                    emit({"type": "error", "message": str(exception)})
                 finally:
                     chunks = []
                     active_rate = None
@@ -152,17 +180,24 @@ def main():
             if recorded_samples > (max(1, args.max_recording_seconds) + 1) * active_rate:
                 raise ValueError("Maximum recording duration exceeded.")
             chunks.append(pcm.copy())
+            if recorded_samples - preview_samples >= max(0.5, args.transcription_interval) * active_rate:
+                preview_samples = recorded_samples
+                preview_signal = torch.from_numpy(np.concatenate(chunks).astype(np.float32, copy=False))
+                if active_rate != 16000:
+                    preview_signal = torchaudio.functional.resample(preview_signal, active_rate, 16000)
+                transcriber.preview(preview_signal.numpy())
 
         except Exception as exception:
+            transcriber.reset()
             recording = False
             chunks = []
             active_rate = None
             recorded_samples = 0
-            print(json.dumps({"type": "error", "message": str(exception)}, ensure_ascii=False), flush=True)
+            emit({"type": "error", "message": str(exception)})
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as exception:
-        print(json.dumps({"type": "error", "message": str(exception)}, ensure_ascii=False), flush=True)
+        emit({"type": "error", "message": str(exception)})

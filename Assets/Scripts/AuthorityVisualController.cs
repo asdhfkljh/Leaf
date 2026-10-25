@@ -16,6 +16,8 @@ public class AuthorityVisualController : MonoBehaviour
     [Header("Scene References")]
     [SerializeField] private Transform earAnchor;
     [SerializeField] private TMP_Text messageText;
+    [Tooltip("Dynamic fallback for recognized Chinese/Japanese/Korean text.")]
+    [SerializeField] private Font speechFallbackFont;
     [Tooltip("Optional. If empty, a basic world-space ParticleSystem is created at runtime.")]
     [SerializeField] private ParticleSystem dissolveParticles;
 
@@ -122,13 +124,46 @@ public class AuthorityVisualController : MonoBehaviour
     private bool animatorWasPausedByDisabling;
     private TMPAnimator tmpAnimator;
     private Material generatedParticleMaterial;
+    private string speechPrefix = "";
+    private string speechSuffix = "";
+    private bool speechTemplateCaptured;
+    private TMP_FontAsset runtimeSpeechFont;
+    private TMP_FontAsset runtimePrimaryFont;
 
     public float AuthorityScore => authorityScore;
     public bool IsSequencePlaying => sequenceCoroutine != null;
 
+    /// <summary>Show recognition text while retaining the preset's outer TMP/effect tags.</summary>
+    public void SetSpeechText(string text, bool final = false)
+    {
+        if (messageText == null || IsSequencePlaying)
+            return;
+        if (!speechTemplateCaptured)
+        {
+            string template = messageText.text ?? "";
+            speechPrefix = System.Text.RegularExpressions.Regex.Match(template, @"^(?:<[^/>][^>]*>)*").Value;
+            speechSuffix = System.Text.RegularExpressions.Regex.Match(template, @"(?:</[^>]+>)*$").Value;
+            speechTemplateCaptured = true;
+        }
+
+        // Prevent recognized speech from being interpreted as TMP or TMPEffects markup.
+        string safeText = (text ?? "").Replace("<", "＜").Replace(">", "＞");
+        meshSnapshotAvailable = false;
+        messageText.text = final ? speechPrefix + safeText + speechSuffix : safeText;
+        messageText.ForceMeshUpdate(true);
+    }
+
     private void Awake()
     {
         CaptureInitialTextState();
+        if (messageText != null && messageText.font != null && speechFallbackFont != null)
+        {
+            runtimeSpeechFont = TMP_FontAsset.CreateFontAsset(speechFallbackFont);
+            runtimePrimaryFont = Instantiate(messageText.font);
+            runtimePrimaryFont.fallbackFontAssetTable = new List<TMP_FontAsset>(messageText.font.fallbackFontAssetTable);
+            runtimePrimaryFont.fallbackFontAssetTable.Add(runtimeSpeechFont);
+            messageText.font = runtimePrimaryFont;
+        }
     }
 
     private void Update()
@@ -720,6 +755,14 @@ public class AuthorityVisualController : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (runtimePrimaryFont != null) Destroy(runtimePrimaryFont);
+        if (runtimeSpeechFont != null)
+        {
+            foreach (Texture2D atlas in runtimeSpeechFont.atlasTextures)
+                if (atlas != null) Destroy(atlas);
+            if (runtimeSpeechFont.material != null) Destroy(runtimeSpeechFont.material);
+            Destroy(runtimeSpeechFont);
+        }
         if (generatedParticleMaterial != null)
         {
             if (Application.isPlaying)

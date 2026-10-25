@@ -341,6 +341,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   earAnchor: {fileID: 1766787859}
   messageText: {fileID: 1086376487}
+  speechFallbackFont: {fileID: 12800000, guid: 5fb2a26e06aa4900b1c4e09fb286f134, type: 3}
   dissolveParticles: {fileID: 0}
   highAuthorityThreshold: 70
   keyboardHighScore: 85
@@ -844,6 +845,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   pythonExecutable: /tmp/studio3-opensmile-venv/bin/python
+  whisperModel: base
+  speechLanguage: auto
+  transcriptionIntervalSeconds: 2
   microphoneDevice: 
   targetSampleRate: 16000
   recordingLengthSeconds: 10

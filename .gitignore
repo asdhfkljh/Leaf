@@ -116,3 +116,7 @@ InitTestScene*.unity*
 !.env.example
 *.pem
 *.key
+
+# Python local caches
+__pycache__/
+*.py[cod]
