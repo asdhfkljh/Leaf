@@ -216,6 +216,37 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 50, y: -30, z: 0}
+--- !u!1 &911937496
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 911937497}
+  m_Layer: 0
+  m_Name: anchor
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &911937497
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 911937496}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0.07, y: 2.122, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1232253402}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &963194225
 GameObject:
   m_ObjectHideFlags: 0
@@ -343,6 +374,11 @@ MonoBehaviour:
   messageText: {fileID: 1086376487}
   speechFallbackFont: {fileID: 12800000, guid: 5fb2a26e06aa4900b1c4e09fb286f134, type: 3}
   dissolveParticles: {fileID: 0}
+  maximumSpeechCharacters: 24
+  speechCharacterStride: 3
+  speechCloudRadius: {x: 4, y: 3, z: 2}
+  speechFloatAmplitude: 0.035
+  speechFloatSpeed: 0.65
   highAuthorityThreshold: 70
   keyboardHighScore: 85
   keyboardLowScore: 20
@@ -420,7 +456,7 @@ MonoBehaviour:
   particleSpawnRadius: 0.018
   particleUpwardBias: 0.08
   particleColor: {r: 1, g: 1, b: 1, a: 1}
-  headOrbitCenter: {fileID: 0}
+  headOrbitCenter: {fileID: 911937497}
   lowOrbitAxisLocal: {x: 0, y: 1, z: 0}
   lowStartDelay: 0.25
   lowOrbitDuration: 2.4
@@ -517,6 +553,81 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &990967482
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 990967479}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7a2f51c9a2b646e19d3e82cbec4430e1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  pythonExecutable: /tmp/studio3-opensmile-venv/bin/python
+  whisperModel: base
+  speechLanguage: auto
+  transcriptionIntervalSeconds: 2
+  microphoneDevice: 
+  targetSampleRate: 16000
+  recordingLengthSeconds: 10
+  chunkMilliseconds: 100
+  maximumRecordingSeconds: 180
+  autoStart: 0
+  enableKeyboardToggle: 1
+  toggleRecordingKey: 49
+  logFeatureJson: 1
+  onFeaturesJsonReceived:
+    m_PersistentCalls:
+      m_Calls: []
+--- !u!114 &990967483
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 990967479}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a2f3c4d5e6b74819a0b1c2d3e4f50617, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  maleRules:
+    f0Median:
+      minimum: 119
+      maximum: 149
+    f0SpanSemitones:
+      minimum: 5.47
+      maximum: 9.19
+    f0StddevNorm:
+      minimum: 0.234
+      maximum: 0.322
+    loudnessMedian:
+      minimum: 0.97
+      maximum: 1.54
+    loudnessSpan:
+      minimum: 1.93
+      maximum: 2.66
+  femaleRules:
+    f0Median:
+      minimum: 193
+      maximum: 214
+    f0SpanSemitones:
+      minimum: 5.15
+      maximum: 7.15
+    f0StddevNorm:
+      minimum: 0.13
+      maximum: 0.184
+    loudnessMedian:
+      minimum: 0.54
+      maximum: 0.84
+    loudnessSpan:
+      minimum: 0.94
+      maximum: 1.27
+  openSmileInput: {fileID: 990967482}
+  visualController: {fileID: 990967480}
+  logClassification: 1
 --- !u!1 &1086376486
 GameObject:
   m_ObjectHideFlags: 0
@@ -830,65 +941,11 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: bd143febf3d9b4412a847d291a42f0ae, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1766787859}
+    - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: bd143febf3d9b4412a847d291a42f0ae, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 911937497}
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: bd143febf3d9b4412a847d291a42f0ae, type: 3}
---- !u!114 &990967482
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 990967479}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7a2f51c9a2b646e19d3e82cbec4430e1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  pythonExecutable: /tmp/studio3-opensmile-venv/bin/python
-  whisperModel: base
-  speechLanguage: auto
-  transcriptionIntervalSeconds: 2
-  microphoneDevice: 
-  targetSampleRate: 16000
-  recordingLengthSeconds: 10
-  chunkMilliseconds: 100
-  maximumRecordingSeconds: 180
-  autoStart: 0
-  enableKeyboardToggle: 1
-  toggleRecordingKey: 49
-  logFeatureJson: 1
-  onFeaturesJsonReceived:
-    m_PersistentCalls:
-      m_Calls: []
-
---- !u!114 &990967483
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 990967479}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a2f3c4d5e6b74819a0b1c2d3e4f50617, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
-  maleRules:
-    f0Median: {minimum: 119, maximum: 149}
-    f0SpanSemitones: {minimum: 5.47, maximum: 9.19}
-    f0StddevNorm: {minimum: 0.234, maximum: 0.322}
-    loudnessMedian: {minimum: 0.97, maximum: 1.54}
-    loudnessSpan: {minimum: 1.93, maximum: 2.66}
-  femaleRules:
-    f0Median: {minimum: 193, maximum: 214}
-    f0SpanSemitones: {minimum: 5.15, maximum: 7.15}
-    f0StddevNorm: {minimum: 0.13, maximum: 0.184}
-    loudnessMedian: {minimum: 0.54, maximum: 0.84}
-    loudnessSpan: {minimum: 0.94, maximum: 1.27}
-  openSmileInput: {fileID: 990967482}
-  visualController: {fileID: 990967480}
-  logClassification: 1
-
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -898,4 +955,3 @@ SceneRoots:
   - {fileID: 1086376489}
   - {fileID: 2020973649}
   - {fileID: 990967481}
-
