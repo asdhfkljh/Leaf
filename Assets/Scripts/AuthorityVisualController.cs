@@ -21,6 +21,14 @@ public class AuthorityVisualController : MonoBehaviour
     [Tooltip("Optional. If empty, a basic world-space ParticleSystem is created at runtime.")]
     [SerializeField] private ParticleSystem dissolveParticles;
 
+    [Header("Speech: Floating Characters")]
+    [SerializeField, Min(1)] private int maximumSpeechCharacters = 24;
+    [SerializeField, Min(2)] private int speechCharacterStride = 3;
+    [Tooltip("World-space ellipsoid around Head, in Head-local directions.")]
+    [SerializeField] private Vector3 speechCloudRadius = new Vector3(0.65f, 0.45f, 0.4f);
+    [SerializeField, Min(0f)] private float speechFloatAmplitude = 0.035f;
+    [SerializeField, Min(0f)] private float speechFloatSpeed = 0.65f;
+
     [Header("Score Trigger")]
     [SerializeField, Range(0f, 100f)] private float highAuthorityThreshold = 70f;
     [SerializeField, Range(0f, 100f)] private float keyboardHighScore = 85f;
@@ -124,33 +132,115 @@ public class AuthorityVisualController : MonoBehaviour
     private bool animatorWasPausedByDisabling;
     private TMPAnimator tmpAnimator;
     private Material generatedParticleMaterial;
-    private string speechPrefix = "";
-    private string speechSuffix = "";
-    private bool speechTemplateCaptured;
     private TMP_FontAsset runtimeSpeechFont;
     private TMP_FontAsset runtimePrimaryFont;
+
+    private bool speechCloudActive;
+    private bool speechCloudFrozen;
+    private Vector3[][] speechBaseVertices;
+    private Vector3[][] frozenSpeechVertices;
 
     public float AuthorityScore => authorityScore;
     public bool IsSequencePlaying => sequenceCoroutine != null;
 
-    /// <summary>Show recognition text while retaining the preset's outer TMP/effect tags.</summary>
+    /// <summary>Show a sparse floating selection for both preview and final recognition results.</summary>
     public void SetSpeechText(string text, bool final = false)
     {
         if (messageText == null || IsSequencePlaying)
             return;
-        if (!speechTemplateCaptured)
+        // Preview and final results use the same sparse selection; never reveal the full transcript.
+        string selected = SelectSpeechCharacters(text);
+        if (string.IsNullOrEmpty(text))
         {
-            string template = messageText.text ?? "";
-            speechPrefix = System.Text.RegularExpressions.Regex.Match(template, @"^(?:<[^/>][^>]*>)*").Value;
-            speechSuffix = System.Text.RegularExpressions.Regex.Match(template, @"(?:</[^>]+>)*$").Value;
-            speechTemplateCaptured = true;
+            speechCloudActive = false;
+            speechCloudFrozen = false;
+            RestoreAnimatorState();
         }
-
-        // Prevent recognized speech from being interpreted as TMP or TMPEffects markup.
-        string safeText = (text ?? "").Replace("<", "＜").Replace(">", "＞");
+        else if (!speechCloudActive)
+        {
+            RememberAnimatorState();
+            StopAnimatorForMeshControl();
+            speechCloudActive = true;
+        }
         meshSnapshotAvailable = false;
-        messageText.text = final ? speechPrefix + safeText + speechSuffix : safeText;
+        messageText.text = selected;
         messageText.ForceMeshUpdate(true);
+        speechBaseVertices = CopySpeechVertices();
+        speechCloudFrozen = false;
+        if (speechCloudActive)
+            UpdateSpeechCloud();
+    }
+
+    private string SelectSpeechCharacters(string transcript)
+    {
+        var result = new System.Text.StringBuilder();
+        int eligible = 0;
+        var elements = System.Globalization.StringInfo.GetTextElementEnumerator(transcript ?? "");
+        while (elements.MoveNext() && result.Length < Mathf.Max(1, maximumSpeechCharacters))
+        {
+            string element = elements.GetTextElement();
+            if (char.IsWhiteSpace(element, 0) || char.IsPunctuation(element, 0) || char.IsControl(element, 0))
+                continue;
+            if (eligible++ % Mathf.Max(2, speechCharacterStride) == 0)
+                result.Append(element.Replace("<", "＜").Replace(">", "＞"));
+        }
+        return result.ToString();
+    }
+
+    private Vector3[][] CopySpeechVertices()
+    {
+        var meshes = messageText.textInfo.meshInfo;
+        var copy = new Vector3[meshes.Length][];
+        for (int i = 0; i < meshes.Length; i++)
+            copy[i] = (Vector3[])meshes[i].vertices.Clone();
+        return copy;
+    }
+
+    private void LateUpdate()
+    {
+        if (!speechCloudActive || messageText == null) return;
+        if (!speechCloudFrozen)
+            UpdateSpeechCloud();
+        else if (activeMode == AuthorityVisualMode.Low && frozenSpeechVertices != null)
+        {
+            // TMP rebuilds its mesh when the low-score sequence changes the text color.
+            for (int i = 0; i < frozenSpeechVertices.Length; i++)
+                Array.Copy(frozenSpeechVertices[i], messageText.textInfo.meshInfo[i].vertices,
+                    frozenSpeechVertices[i].Length);
+            messageText.UpdateVertexData(TMP_VertexDataUpdateFlags.Vertices);
+        }
+    }
+
+    private void UpdateSpeechCloud()
+    {
+        Transform head = GetOrbitCenter();
+        if (head == null || speechBaseVertices == null) return;
+        var info = messageText.textInfo;
+        Transform textTransform = messageText.transform;
+        for (int i = 0; i < info.characterCount; i++)
+        {
+            var character = info.characterInfo[i];
+            if (!character.isVisible) continue;
+            int material = character.materialReferenceIndex;
+            int vertex = character.vertexIndex;
+            Vector3 center = (speechBaseVertices[material][vertex] + speechBaseVertices[material][vertex + 2]) * 0.5f;
+            // Golden-angle placement avoids a flat row and keeps existing characters in stable slots.
+            float angle = i * 2.399963f + Time.time * speechFloatSpeed * 0.12f;
+            float height = Mathf.Sin(i * 1.73f);
+            float radial = Mathf.Sqrt(1f - height * height * 0.7f);
+            Vector3 offset = new Vector3(Mathf.Cos(angle) * speechCloudRadius.x * radial,
+                height * speechCloudRadius.y + Mathf.Sin(Time.time * speechFloatSpeed + i) * speechFloatAmplitude,
+                Mathf.Sin(angle) * speechCloudRadius.z * radial);
+            Vector3 worldCenter = head.position + head.rotation * offset;
+            Quaternion tilt = Quaternion.AngleAxis(Mathf.Sin(i * 2.7f + Time.time * 0.2f) * 24f, textTransform.forward);
+            float scale = Mathf.Lerp(0.65f, 1.2f, (Mathf.Sin(i * 3.1f) + 1f) * 0.5f);
+            for (int corner = 0; corner < 4; corner++)
+            {
+                Vector3 delta = textTransform.TransformVector(speechBaseVertices[material][vertex + corner] - center);
+                info.meshInfo[material].vertices[vertex + corner] = textTransform.InverseTransformPoint(worldCenter + tilt * delta * scale);
+            }
+        }
+        messageText.UpdateVertexData(TMP_VertexDataUpdateFlags.Vertices);
     }
 
     private void Awake()
@@ -235,7 +325,14 @@ public class AuthorityVisualController : MonoBehaviour
         if (activeMode != AuthorityVisualMode.None)
             RestoreVisualState();
 
-        RememberAnimatorState();
+        if (speechCloudActive)
+        {
+            UpdateSpeechCloud();
+            speechCloudFrozen = true;
+            frozenSpeechVertices = CopySpeechVertices();
+        }
+        else
+            RememberAnimatorState();
         activeMode = mode;
         sequenceCoroutine = mode == AuthorityVisualMode.High
             ? StartCoroutine(PlayHighSequenceRoutine())
@@ -264,7 +361,8 @@ public class AuthorityVisualController : MonoBehaviour
             yield return new WaitForSeconds(scatterHoldDuration);
 
         StopAnimatorForMeshControl();
-        messageText.ForceMeshUpdate(true);
+        if (!speechCloudActive)
+            messageText.ForceMeshUpdate(true);
         CaptureOriginalMesh();
         BuildCharacterMotions();
         PrepareParticleSystem();
@@ -690,6 +788,11 @@ public class AuthorityVisualController : MonoBehaviour
 
     private void RestoreVisualState()
     {
+        bool clearSpeech = speechCloudActive;
+        speechCloudActive = false;
+        speechCloudFrozen = false;
+        speechBaseVertices = null;
+        frozenSpeechVertices = null;
         if (messageText != null)
         {
             if (initialTextStateCaptured)
@@ -707,6 +810,11 @@ public class AuthorityVisualController : MonoBehaviour
             dissolveParticles.Clear();
 
         RestoreAnimatorState();
+        if (clearSpeech && messageText != null)
+        {
+            messageText.text = "";
+            messageText.ForceMeshUpdate(true);
+        }
     }
 
     private static float RandomRange(System.Random random, float min, float max)
