@@ -165,6 +165,8 @@ public sealed class VoiceDebugWindow : EditorWindow
                 EditorGUILayout.TextArea(lastJson, GUILayout.MinHeight(100f));
         }
 
+        DrawClassificationRules(input.GetComponent<AuthorityVoiceClassifier>());
+
         if (!string.IsNullOrEmpty(lastIssue))
         {
             EditorGUILayout.Space();
@@ -177,6 +179,48 @@ public sealed class VoiceDebugWindow : EditorWindow
     private static void Value(string label, float value, string unit = "")
     {
         EditorGUILayout.LabelField(label, value.ToString("F3") + unit);
+    }
+
+    private static void DrawClassificationRules(AuthorityVoiceClassifier classifier)
+    {
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("当前判断标准（实时读取分类器配置）", EditorStyles.boldLabel);
+        if (classifier == null)
+        {
+            EditorGUILayout.HelpBox("录音对象上未找到 AuthorityVoiceClassifier，无法读取标准。", MessageType.Warning);
+            return;
+        }
+
+        EditorGUILayout.HelpBox("模型先选择男性 / 女性声音分组，再使用对应标准。五项指标必须全部非 0 且落在范围内（包含上下限）才判为 HIGH，否则为 LOW；未知声音分组不产生判定。", MessageType.None);
+        SerializedObject serializedClassifier = new SerializedObject(classifier);
+        serializedClassifier.Update();
+        DrawRuleGroup("男性声音标准", serializedClassifier.FindProperty("maleRules"));
+        DrawRuleGroup("女性声音标准", serializedClassifier.FindProperty("femaleRules"));
+        EditorGUILayout.HelpBox("此处只读。可在分类器 Inspector 中调整，窗口同步显示；Play 模式中的修改退出后会还原。", MessageType.None);
+    }
+
+    private static void DrawRuleGroup(string title, SerializedProperty rules)
+    {
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
+        if (rules == null)
+            EditorGUILayout.HelpBox("未找到规则配置。", MessageType.Warning);
+        else
+        {
+            RuleRange(rules, "f0Median", "F0 中位数", " Hz");
+            RuleRange(rules, "f0SpanSemitones", "F0 跨度", " 半音");
+            RuleRange(rules, "f0StddevNorm", "F0 相对标准差");
+            RuleRange(rules, "loudnessMedian", "响度中位数");
+            RuleRange(rules, "loudnessSpan", "响度跨度");
+        }
+        EditorGUILayout.EndVertical();
+    }
+
+    private static void RuleRange(SerializedProperty rules, string field, string label, string unit = "")
+    {
+        SerializedProperty range = rules.FindPropertyRelative(field);
+        EditorGUILayout.LabelField(label, range.FindPropertyRelative("minimum").floatValue.ToString("0.###") +
+            " ~ " + range.FindPropertyRelative("maximum").floatValue.ToString("0.###") + unit);
     }
 }
 #endif
