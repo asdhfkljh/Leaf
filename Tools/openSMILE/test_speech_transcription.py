@@ -1,11 +1,33 @@
 """Protocol/concurrency regression checks; no models or microphone required."""
 import threading
 import unittest
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 from speech_transcription import SpeechTranscriber
 
 
 class SpeechTranscriberTests(unittest.TestCase):
+    def test_worker_preserves_chinese_through_ascii_stdout(self):
+        # Reproduce a GUI-launched worker with a restrictive inherited pipe encoding.
+        code = (
+            "from realtime_worker import emit; "
+            "text = '\\u4f60\\u597d\\uff0c\\u4e16\\u754c'; "
+            "emit({'type': 'transcript', 'text': text}); "
+            "emit({'type': 'features', 'transcript': text})"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code], cwd=str(Path(__file__).resolve().parent),
+            env=dict(os.environ, PYTHONIOENCODING="ascii:replace"),
+            capture_output=True, check=True,
+        )
+        preview, final = [json.loads(line) for line in result.stdout.decode("ascii").splitlines()]
+        self.assertEqual(preview["text"], "你好，世界")
+        self.assertEqual(final["transcript"], "你好，世界")
+
     def test_busy_preview_is_not_queued_and_reset_discards_old_result(self):
         entered, release = threading.Event(), threading.Event()
         calls, packets = [], []

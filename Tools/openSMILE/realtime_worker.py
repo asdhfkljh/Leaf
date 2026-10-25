@@ -17,7 +17,9 @@ OUTPUT_LOCK = threading.Lock()
 
 def emit(packet):
     with OUTPUT_LOCK:
-        print(json.dumps(packet, ensure_ascii=False, allow_nan=False), flush=True)
+        # ASCII JSON escapes preserve Unicode even when Unity launches Python
+        # with a non-UTF-8 locale or stdout configured to replace Chinese with '?'.
+        print(json.dumps(packet, ensure_ascii=True, allow_nan=False), flush=True)
 
 
 def finite_value(value):
