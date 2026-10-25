@@ -107,3 +107,12 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# macOS and local credentials
+.DS_Store
+.idea/
+.env
+.env.*
+!.env.example
+*.pem
+*.key

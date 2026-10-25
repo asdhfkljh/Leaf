@@ -1,0 +1,4 @@
+opensmile
+pandas
+audiofile
+numpy
