@@ -4,6 +4,9 @@ using UnityEngine;
 /// <summary>Classifies a completed recording against editable voice-feature ranges.</summary>
 public class AuthorityVoiceClassifier : MonoBehaviour
 {
+#if UNITY_EDITOR
+    public string DebugLastClassification { get; private set; }
+#endif
     [Serializable]
     private struct FloatRange
     {
@@ -124,6 +127,11 @@ public class AuthorityVoiceClassifier : MonoBehaviour
                       rules.f0StddevNorm.Contains(packet.f0_stddev_norm) &&
                       rules.loudnessMedian.Contains(packet.loudness_median) &&
                       rules.loudnessSpan.Contains(packet.loudness_span);
+
+#if UNITY_EDITOR
+        DebugLastClassification = (isHigh ? "HIGH" : "LOW") +
+            " (" + (classifiedAsFemaleVoice ? "Female" : "Male") + ")";
+#endif
 
         if (isHigh)
             visualController.PlaySequence();

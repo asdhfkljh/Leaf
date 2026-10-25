@@ -51,6 +51,15 @@ public class RealtimeOpenSmileInput : MonoBehaviour
     public bool IsRecording => capturing;
     public bool IsProcessing => awaitingAnalysis;
 
+#if UNITY_EDITOR
+    // Read-only diagnostics for the developer window; excluded from player builds.
+    public bool DebugWorkerRunning => worker != null && !worker.HasExited;
+    public bool DebugWorkerReady => DebugWorkerRunning && workerReady;
+    public bool DebugStartRequested => startRequested;
+    public string DebugMicrophone => activeDevice;
+    public float DebugRecordingSeconds => capturing ? Time.realtimeSinceStartup - recordingStartedAt : 0f;
+#endif
+
     [Serializable]
     private class AudioChunkPacket
     {
