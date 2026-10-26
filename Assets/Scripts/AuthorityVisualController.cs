@@ -93,11 +93,6 @@ public class AuthorityVisualController : MonoBehaviour
     [SerializeField] private float lowDriftTwist = 35f;
     [SerializeField] private AnimationCurve lowOrbitCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
     [SerializeField] private AnimationCurve lowDriftCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
-    [Header("Low Authority: Slow Dissolve")]
-    [SerializeField, Min(0.1f)] private float lowDissolveDuration = 3.5f;
-    [SerializeField, Min(0.1f)] private float lowParticleLifetime = 2.2f;
-    [SerializeField, Min(0f)] private float lowParticleSpeed = 0.06f;
-
     [SerializeField] private AnimationCurve lowFadeCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
 
     private struct CharacterMotion
@@ -399,14 +394,6 @@ public class AuthorityVisualController : MonoBehaviour
         if (lowStartDelay > 0f)
             yield return new WaitForSeconds(lowStartDelay);
 
-        StopAnimatorForMeshControl();
-        if (!speechCloudActive)
-            messageText.ForceMeshUpdate(true);
-        CaptureOriginalMesh();
-        PrepareParticleSystem();
-        var emittedCounts = new int[messageText.textInfo.characterCount];
-        float dissolveDuration = Mathf.Max(0.1f, lowDissolveDuration);
-
         Transform centerTransform = GetOrbitCenter();
         Vector3 center = centerTransform.position;
         Vector3 axis = centerTransform.TransformDirection(lowOrbitAxisLocal).normalized;
@@ -439,7 +426,7 @@ public class AuthorityVisualController : MonoBehaviour
             ? Quaternion.AngleAxis(orbitDegrees, axis) * startRotation
             : startRotation;
 
-        float totalDuration = lowOrbitDuration + Mathf.Max(dissolveDuration, lowDriftDuration);
+        float totalDuration = lowOrbitDuration + lowDriftDuration;
         float elapsed = 0f;
         while (elapsed < totalDuration)
         {
@@ -458,13 +445,15 @@ public class AuthorityVisualController : MonoBehaviour
             }
             else
             {
-                float t = Mathf.Clamp01((elapsed - lowOrbitDuration) / dissolveDuration);
-                float driftT = Mathf.Clamp01((elapsed - lowOrbitDuration) / Mathf.Max(0.05f, lowDriftDuration));
-                float eased = lowDriftCurve != null ? Mathf.Clamp01(lowDriftCurve.Evaluate(driftT)) : driftT;
+                float t = Mathf.Clamp01((elapsed - lowOrbitDuration) / lowDriftDuration);
+                float eased = lowDriftCurve != null ? Mathf.Clamp01(lowDriftCurve.Evaluate(t)) : t;
                 messageText.transform.position = Vector3.Lerp(orbitEndPosition, driftEndPosition, eased);
                 messageText.transform.rotation = orbitEndRotation * Quaternion.AngleAxis(lowDriftTwist * eased, Vector3.forward);
 
-                AnimateLowDissolve(t, emittedCounts);
+                float fade = lowFadeCurve != null ? Mathf.Clamp01(lowFadeCurve.Evaluate(t)) : t;
+                Color color = initialTextColor;
+                color.a = initialTextColor.a * (1f - fade);
+                messageText.color = color;
             }
 
             yield return null;
@@ -472,60 +461,12 @@ public class AuthorityVisualController : MonoBehaviour
 
         messageText.transform.position = driftEndPosition;
         messageText.transform.rotation = orbitEndRotation * Quaternion.AngleAxis(lowDriftTwist, Vector3.forward);
-        AnimateLowDissolve(1f, emittedCounts);
-        // Let the last particles fade naturally before reset clears the particle system.
-        yield return new WaitForSeconds(Mathf.Max(0.1f, lowParticleLifetime));
+        Color invisible = initialTextColor;
+        invisible.a = 0f;
+        messageText.color = invisible;
         if (resetAfterSequenceDelay > 0f)
             yield return new WaitForSeconds(resetAfterSequenceDelay);
         CompleteSequenceAndRestore();
-    }
-
-    private void AnimateLowDissolve(float progress, int[] emittedCounts)
-    {
-        TMP_TextInfo info = messageText.textInfo;
-        Transform textTransform = messageText.transform;
-        for (int i = 0; i < info.characterCount; i++)
-        {
-            TMP_CharacterInfo character = info.characterInfo[i];
-            if (!character.isVisible) continue;
-            int material = character.materialReferenceIndex;
-            int vertex = character.vertexIndex;
-            // Slightly stagger the erosion, while guaranteeing every glyph disappears at the end.
-            float delay = (i % 7) * 0.035f;
-            float localProgress = Mathf.Clamp01((progress - delay) / (1f - delay));
-            float fade = lowFadeCurve != null ? Mathf.Clamp01(lowFadeCurve.Evaluate(localProgress)) : localProgress;
-            if (progress >= 1f) fade = 1f;
-            for (int corner = 0; corner < 4; corner++)
-            {
-                Color32 color = originalColors[material][vertex + corner];
-                color.a = (byte)Mathf.RoundToInt(color.a * (1f - fade));
-                info.meshInfo[material].colors32[vertex + corner] = color;
-            }
-
-            int targetCount = Mathf.FloorToInt(fade * Mathf.Max(0, particlesPerCharacter));
-            while (emittedCounts[i] < targetCount)
-            {
-                int particleIndex = emittedCounts[i]++;
-                if (dissolveParticles == null) continue;
-                var random = new System.Random(randomSeed ^ (i * 104729) ^ (particleIndex * 7919));
-                // Shed particles across the glyph's quad, rather than a burst at its center.
-                Vector3 bottom = Vector3.Lerp(originalVertices[material][vertex], originalVertices[material][vertex + 3],
-                    RandomRange(random, 0f, 1f));
-                Vector3 top = Vector3.Lerp(originalVertices[material][vertex + 1], originalVertices[material][vertex + 2],
-                    RandomRange(random, 0f, 1f));
-                Vector3 position = textTransform.TransformPoint(Vector3.Lerp(bottom, top, RandomRange(random, 0f, 1f)));
-                Color color = originalColors[material][vertex];
-                dissolveParticles.Emit(new ParticleSystem.EmitParams
-                {
-                    position = position,
-                    velocity = RandomInsideUnitSphere(random) * lowParticleSpeed + Vector3.up * lowParticleSpeed * 0.4f,
-                    startColor = color,
-                    startSize = particleSize,
-                    startLifetime = Mathf.Max(0.1f, lowParticleLifetime)
-                }, 1);
-            }
-        }
-        messageText.UpdateVertexData(TMP_VertexDataUpdateFlags.Colors32);
     }
 
     private void CompleteSequenceAndRestore()
@@ -767,7 +708,7 @@ public class AuthorityVisualController : MonoBehaviour
 
         ParticleSystem.MainModule main = dissolveParticles.main;
         main.simulationSpace = ParticleSystemSimulationSpace.World;
-        main.maxParticles = Mathf.Max(main.maxParticles, Mathf.Max(characterMotions.Count, messageText.textInfo.characterCount) * particlesPerCharacter);
+        main.maxParticles = Mathf.Max(main.maxParticles, characterMotions.Count * particlesPerCharacter);
 
         ParticleSystem.EmissionModule emission = dissolveParticles.emission;
         emission.enabled = false;
