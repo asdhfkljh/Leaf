@@ -35,7 +35,11 @@ public class AuthorityVisualController : MonoBehaviour
     [SerializeField, Range(0f, 100f)] private float keyboardLowScore = 20f;
     [Tooltip("Prevents scores near the high threshold from rapidly switching between the two effects.")]
     [SerializeField, Range(0f, 25f)] private float scoreHysteresis = 5f;
+    [Header("Temporary Keyboard Testing")]
+    [Tooltip("Turn off to disable H/L/R testing without disabling voice-driven effects.")]
     [SerializeField] private bool enableKeyboardTesting = true;
+    [Tooltip("Sample transcript used by H/L so effects can be previewed without recording speech.")]
+    [SerializeField, TextArea] private string keyboardTestText = "The words float around your head and slowly fade away as you listen to this voice.";
     [SerializeField] private KeyCode playKey = KeyCode.H;
     [SerializeField] private KeyCode lowKey = KeyCode.L;
     [SerializeField] private KeyCode resetKey = KeyCode.R;
@@ -294,13 +298,28 @@ public class AuthorityVisualController : MonoBehaviour
         if (!enableKeyboardTesting) return;
 
         if (Input.GetKeyDown(playKey))
-            SetAuthorityScore(keyboardHighScore);
+            PlayKeyboardTest(true);
 
-        if (Input.GetKeyDown(lowKey))
-            SetAuthorityScore(keyboardLowScore);
+        else if (Input.GetKeyDown(lowKey))
+            PlayKeyboardTest(false);
 
         if (Input.GetKeyDown(resetKey))
             ResetSequence();
+    }
+
+    private void PlayKeyboardTest(bool high)
+    {
+        // Restart even when the same effect is already playing, and populate the
+        // same floating-character layout used by recognized speech.
+        ResetSequence();
+        SetSpeechText(string.IsNullOrWhiteSpace(keyboardTestText)
+            ? "The words float around your head and slowly fade away as you listen to this voice."
+            : keyboardTestText, true);
+        authorityScore = high ? keyboardHighScore : keyboardLowScore;
+        if (high)
+            PlaySequence();
+        else
+            PlayLowSequence();
     }
 
     /// <summary>Set a score from an audio analyzer; high and low bands start their respective visual behaviors.</summary>
