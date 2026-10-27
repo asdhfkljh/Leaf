@@ -470,9 +470,16 @@ public class AuthorityVisualController : MonoBehaviour
 
     private IEnumerator PlayLowFragmentDissolve()
     {
-        StopAnimatorForMeshControl();
-        if (!speechCloudActive) messageText.ForceMeshUpdate(true);
+        // StopAnimating can synchronously restore TMP's original line layout. Capture the
+        // visible orbit pose first, before handing control from TMP to the dissolve meshes.
+        if (speechCloudActive && frozenSpeechVertices != null)
+        {
+            for (int i = 0; i < frozenSpeechVertices.Length; i++)
+                Array.Copy(frozenSpeechVertices[i], messageText.textInfo.meshInfo[i].vertices,
+                    frozenSpeechVertices[i].Length);
+        }
         CaptureOriginalMesh();
+        StopAnimatorForMeshControl();
         PrepareParticleSystem();
         BuildLowDissolveMeshes();
         // Hide the intact glyphs; the subdivided copies retain the same SDF font materials.
@@ -510,6 +517,9 @@ public class AuthorityVisualController : MonoBehaviour
             var thresholds = new List<float>();
             var particleAllowed = new List<bool>();
             TMP_MeshInfo source = info.meshInfo[material];
+            // Use the captured orbit pose, never the live TMP mesh which may have rebuilt.
+            Vector3[] orbitVertices = originalVertices[material];
+            Color32[] orbitColors = originalColors[material];
             Texture2D atlas = source.material != null ? source.material.mainTexture as Texture2D : null;
             for (int c = 0; c < info.characterCount; c++)
             {
@@ -524,13 +534,13 @@ public class AuthorityVisualController : MonoBehaviour
                     {
                         float u = (x + (corner >= 2 ? 1f : 0f)) / grid;
                         float t = (y + (corner == 1 || corner == 2 ? 1f : 0f)) / grid;
-                        vertices.Add(Vector3.Lerp(Vector3.Lerp(source.vertices[v], source.vertices[v + 3], u),
-                            Vector3.Lerp(source.vertices[v + 1], source.vertices[v + 2], u), t));
+                        vertices.Add(Vector3.Lerp(Vector3.Lerp(orbitVertices[v], orbitVertices[v + 3], u),
+                            Vector3.Lerp(orbitVertices[v + 1], orbitVertices[v + 2], u), t));
                         uv.Add(Vector2.Lerp(Vector2.Lerp(source.uvs0[v], source.uvs0[v + 3], u),
                             Vector2.Lerp(source.uvs0[v + 1], source.uvs0[v + 2], u), t));
                         // Preserve SDF scale and packed mapping, rather than interpolating packed UV2 values.
                         uv2.Add(source.uvs2[v + corner]);
-                        colors.Add(source.colors32[v + corner]);
+                        colors.Add(orbitColors[v + corner]);
                     }
                     triangles.AddRange(new[] { first, first + 1, first + 2, first + 2, first + 3, first });
                     thresholds.Add(0.08f + (float)random.NextDouble() * 0.82f);
