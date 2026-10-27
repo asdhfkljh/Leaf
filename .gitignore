@@ -120,3 +120,7 @@ InitTestScene*.unity*
 # Python local caches
 __pycache__/
 *.py[cod]
+
+# Local face detector environment and downloaded model
+/Tools/FaceFusion/.venv/
+/Tools/FaceFusion/*.task

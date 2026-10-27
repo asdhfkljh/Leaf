@@ -490,7 +490,7 @@ PlayerSettings:
   enableInternalProfiler: 0
   logObjCUncaughtExceptions: 1
   enableCrashReportAPI: 0
-  cameraUsageDescription: 
+  cameraUsageDescription: Capture facial features locally for the Head fusion effect.
   locationUsageDescription: 
   microphoneUsageDescription: 
   bluetoothUsageDescription: 

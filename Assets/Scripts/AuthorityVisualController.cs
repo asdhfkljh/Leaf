@@ -172,6 +172,11 @@ public class AuthorityVisualController : MonoBehaviour
     private Vector3[][] speechBaseVertices;
     private Vector3[][] frozenSpeechVertices;
 
+    public event Action HighStarted;
+    public event Action HighMotionStarted;
+    public event Action HighTextFinished;
+    public event Action SequenceCancelled;
+
     public float AuthorityScore => authorityScore;
     public bool IsSequencePlaying => sequenceCoroutine != null;
 
@@ -385,7 +390,9 @@ public class AuthorityVisualController : MonoBehaviour
         }
         else
             RememberAnimatorState();
+        SequenceCancelled?.Invoke();
         activeMode = mode;
+        if (mode == AuthorityVisualMode.High) HighStarted?.Invoke();
         sequenceCoroutine = mode == AuthorityVisualMode.High
             ? StartCoroutine(PlayHighSequenceRoutine())
             : StartCoroutine(PlayLowSequenceRoutine());
@@ -393,6 +400,7 @@ public class AuthorityVisualController : MonoBehaviour
 
     public void ResetSequence()
     {
+        SequenceCancelled?.Invoke();
         if (sequenceCoroutine != null)
         {
             StopCoroutine(sequenceCoroutine);
@@ -422,10 +430,12 @@ public class AuthorityVisualController : MonoBehaviour
         if (characterMotions.Count == 0)
         {
             Debug.LogWarning("AuthorityVisualController: the TMP text has no visible characters to animate.", this);
+            HighTextFinished?.Invoke();
             CompleteSequenceAndRestore();
             yield break;
         }
 
+        HighMotionStarted?.Invoke();
         float totalDuration = (characterMotions.Count - 1) * characterStagger + moveDuration + characterFadeDuration;
         float elapsed = 0f;
         while (elapsed < totalDuration)
@@ -436,6 +446,7 @@ public class AuthorityVisualController : MonoBehaviour
         }
 
         AnimateCharacters(totalDuration);
+        HighTextFinished?.Invoke();
         if (resetAfterSequenceDelay > 0f)
             yield return new WaitForSeconds(resetAfterSequenceDelay);
         CompleteSequenceAndRestore();
@@ -695,6 +706,11 @@ public class AuthorityVisualController : MonoBehaviour
             if (fragment.mesh != null) Destroy(fragment.mesh);
         }
         lowDissolveMeshes.Clear();
+    }
+
+    private void OnDisable()
+    {
+        SequenceCancelled?.Invoke();
     }
 
     private void CompleteSequenceAndRestore()
