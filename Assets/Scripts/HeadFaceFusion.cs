@@ -8,19 +8,15 @@ using UnityEngine;
 using Process = System.Diagnostics.Process;
 using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 
-/// <summary>Freezes a reconstructed identity on High and drives matched face BlendShapes.</summary>
+/// <summary>Freezes stable face proportions on High and morphs the actual Head mesh using BlendShapes.</summary>
 public class HeadFaceFusion : MonoBehaviour
 {
     [SerializeField] private AuthorityVisualController visualController;
     [SerializeField] private Transform head;
     [SerializeField] private Mesh morphMesh;
-    public enum ReconstructionBackend { LegacyProportions, Dense3DDFA }
-    [SerializeField] private ReconstructionBackend backend = ReconstructionBackend.Dense3DDFA;
-    [SerializeField, Range(0, 1)] private float identityStrength = 1f;
-    [SerializeField, Range(.05f, 1f)] private float maximumShapeSpread = .45f;
     [SerializeField] private string pythonExecutable = "Tools/FaceFusion/.venv/bin/python";
     [SerializeField] private string cameraDevice = "";
-    [SerializeField, Min(.2f)] private float sampleInterval = .15f;
+    [SerializeField, Min(.2f)] private float sampleInterval = .5f;
     [SerializeField, Min(.1f)] private float maximumSnapshotAge = 2f;
     [SerializeField, Min(.1f)] private float fadeInSeconds = 1.5f;
     [SerializeField, Min(0)] private float holdSeconds = 1f;
@@ -37,8 +33,8 @@ public class HeadFaceFusion : MonoBehaviour
     private static readonly string[] ShapeNames = { "EyeSpacingWide", "EyeSpacingNarrow", "MouthWide", "MouthNarrow" };
     private readonly ConcurrentQueue<string> messages = new ConcurrentQueue<string>();
     private readonly List<Measurement> samples = new List<Measurement>();
-    private int[] shapeIndices = new int[4];
-    private float[] initialWeights = new float[4];
+    private readonly int[] shapeIndices = new int[4];
+    private readonly float[] initialWeights = new float[4];
     private Process worker;
     private WebCamTexture webcam;
     private Texture2D frame;
@@ -46,11 +42,7 @@ public class HeadFaceFusion : MonoBehaviour
     private bool sourceWasEnabled;
     private SkinnedMeshRenderer morphRenderer;
     private GameObject morphObject;
-    private float[] targetWeights = new float[4];
-    private Mesh generatedDenseMesh;
-    private string denseModelId;
-    private readonly List<Renderer> hiddenRenderers = new List<Renderer>();
-    private readonly List<bool> hiddenStates = new List<bool>();
+    private Vector4 targetWeights;
     private float sentAt, nextSample, workerStartedAt;
     private bool ready, inFlight, armed, textFinished, fadingIn, revealed, workerFailed;
     private Coroutine transition;
@@ -62,19 +54,17 @@ public class HeadFaceFusion : MonoBehaviour
         public int id;
         public bool valid;
         public float eye_spacing_ratio, mouth_width_ratio;
-        public float[] shape_params;
-        public string model_id, backend;
     }
     [Serializable] private class Request { public int id; public string image; public int rotation; }
-    private struct Measurement { public float eyes, mouth, at; public float[] shape; }
+    private struct Measurement { public float eyes, mouth, at; }
 
     private void OnEnable() => StartCoroutine(Initialize());
 
     private IEnumerator Initialize()
     {
         if (visualController == null) visualController = GetComponent<AuthorityVisualController>();
-        if (head == null || visualController == null || !BuildMorphRenderer())
-        { Debug.LogWarning("Head morph: renderer setup failed; check scene references and local model files.", this); yield break; }
+        if (head == null || visualController == null || morphMesh == null || !BuildMorphRenderer())
+        { Debug.LogWarning("Head morph: assign Head, Visual Controller and the authored morph mesh.", this); yield break; }
         visualController.HighStarted += Capture;
         visualController.HighMotionStarted += Reveal;
         visualController.HighTextFinished += Finish;
@@ -99,11 +89,9 @@ public class HeadFaceFusion : MonoBehaviour
             if (renderer == null || !renderer.enabled || filter.sharedMesh == null) continue;
             if (source == null || renderer.bounds.size.y > source.GetComponent<Renderer>().bounds.size.y) source = filter;
         }
-        if (backend == ReconstructionBackend.Dense3DDFA) return BuildDenseRenderer(source);
-        if (source == null || morphMesh == null || source.sharedMesh.vertexCount != morphMesh.vertexCount ||
+        if (source == null || source.sharedMesh.vertexCount != morphMesh.vertexCount ||
             Vector3.Distance(source.sharedMesh.bounds.size, morphMesh.bounds.size) > .001f)
         { Debug.LogWarning("Head morph: authored mesh does not match the source Head topology/bounds.", this); return false; }
-        shapeIndices = new int[4]; initialWeights = new float[4]; targetWeights = new float[4];
         for (int i = 0; i < ShapeNames.Length; i++)
         {
             shapeIndices[i] = morphMesh.GetBlendShapeIndex(ShapeNames[i]);
@@ -123,33 +111,6 @@ public class HeadFaceFusion : MonoBehaviour
         return true;
     }
 
-    private bool BuildDenseRenderer(MeshFilter source)
-    {
-        if (source == null) return false;
-        try
-        {
-            string root = Directory.GetParent(Application.dataPath).FullName;
-            generatedDenseMesh = DenseFaceModel.Load(Path.Combine(root, DenseFaceModel.RelativePath), head,
-                source.GetComponent<Renderer>().bounds, out denseModelId);
-            morphObject = new GameObject("3DDFA matched identity face"); morphObject.layer = source.gameObject.layer;
-            morphObject.transform.SetParent(head, false);
-            morphRenderer = morphObject.AddComponent<SkinnedMeshRenderer>(); morphRenderer.sharedMesh = generatedDenseMesh;
-            morphRenderer.sharedMaterials = new[] { source.GetComponent<Renderer>().sharedMaterial };
-            var bounds = generatedDenseMesh.bounds; bounds.Expand(bounds.size * .6f); morphRenderer.localBounds = bounds;
-            shapeIndices = new int[DenseFaceModel.ParameterCount * 2]; initialWeights = new float[shapeIndices.Length];
-            targetWeights = new float[shapeIndices.Length];
-            for (int i = 0; i < shapeIndices.Length; i++) shapeIndices[i] = i;
-            foreach (var renderer in head.GetComponentsInChildren<Renderer>())
-            {
-                if (renderer == morphRenderer) continue;
-                hiddenRenderers.Add(renderer); hiddenStates.Add(renderer.enabled); renderer.enabled = false;
-            }
-            return true;
-        }
-        catch (Exception e)
-        { Debug.LogWarning("3DDFA face setup unavailable: " + e.Message + ". Run Tools/FaceFusion/prepare_3ddfa.py first.", this); return false; }
-    }
-
     private void StartWorker()
     {
         string root = Directory.GetParent(Application.dataPath).FullName;
@@ -159,7 +120,7 @@ public class HeadFaceFusion : MonoBehaviour
         try
         {
             worker = new Process { StartInfo = new ProcessStartInfo {
-                FileName = python, Arguments = "-u \"" + script + "\" --backend " + (backend == ReconstructionBackend.Dense3DDFA ? "3ddfa" : "mediapipe"), WorkingDirectory = root,
+                FileName = python, Arguments = "-u \"" + script + "\"", WorkingDirectory = root,
                 UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true } };
             worker.OutputDataReceived += (_, e) => {
@@ -179,23 +140,15 @@ public class HeadFaceFusion : MonoBehaviour
             try { reply = JsonUtility.FromJson<Reply>(json); }
             catch { continue; }
             if (reply == null) continue;
-            if (reply.type == "ready")
-            {
-                bool dense = backend == ReconstructionBackend.Dense3DDFA;
-                if (dense && (reply.model_id != denseModelId || reply.backend != "3ddfa"))
-                { workerFailed = true; Debug.LogWarning("3DDFA model/basis mismatch; rerun preparation and restart Play.", this); continue; }
-                ready = true; Debug.Log(dense ? "3DDFA: CPU reconstruction ready; face camera for three stable samples." : "Head morph: local detector ready.", this);
-            }
+            if (reply.type == "ready") { ready = true; Debug.Log("Head morph: local detector ready. Face camera with relaxed mouth for three stable samples.", this); }
             else if (reply.type == "error")
             { inFlight = false; samples.Clear(); Debug.LogWarning("Head morph: " + reply.message, this); }
             else if (reply.type == "face" && reply.id == requestId)
             {
                 inFlight = false;
-                if (reply.valid && (backend == ReconstructionBackend.Dense3DDFA
-                    ? reply.model_id == denseModelId && ValidShape(reply.shape_params)
-                    : IsRatio(reply.eye_spacing_ratio) && IsRatio(reply.mouth_width_ratio)))
+                if (reply.valid && IsRatio(reply.eye_spacing_ratio) && IsRatio(reply.mouth_width_ratio))
                 {
-                    samples.Add(new Measurement { eyes = reply.eye_spacing_ratio, mouth = reply.mouth_width_ratio, at = sentAt, shape = reply.shape_params });
+                    samples.Add(new Measurement { eyes = reply.eye_spacing_ratio, mouth = reply.mouth_width_ratio, at = sentAt });
                     while (samples.Count > stableSampleCount) samples.RemoveAt(0);
                 }
                 else samples.Clear();
@@ -231,30 +184,11 @@ public class HeadFaceFusion : MonoBehaviour
 
     private static bool IsRatio(float value) => !float.IsNaN(value) && !float.IsInfinity(value) && value > .1f && value < .9f;
 
-    private static bool ValidShape(float[] shape)
-    {
-        if (shape == null || shape.Length != DenseFaceModel.ParameterCount) return false;
-        foreach (float v in shape) if (float.IsNaN(v) || float.IsInfinity(v) || Mathf.Abs(v) > DenseFaceModel.CoefficientLimit + .01f) return false;
-        return true;
-    }
-
     private void Capture()
     {
         Cancel();
         if (morphRenderer == null || samples.Count < stableSampleCount || Time.unscaledTime - samples[0].at > maximumSnapshotAge)
         { Debug.Log("Head morph: no fresh stable frontal measurements; playing text only.", this); return; }
-        if (backend == ReconstructionBackend.Dense3DDFA)
-        {
-            var shape = new float[DenseFaceModel.ParameterCount];
-            for (int k = 0; k < shape.Length; k++)
-            {
-                var values = new List<float>(); foreach (var sample in samples) values.Add(sample.shape[k]); values.Sort();
-                if (values[values.Count - 1] - values[0] > maximumShapeSpread)
-                { Debug.Log("3DDFA: shape is still changing; hold a frontal neutral pose and trigger again.", this); return; }
-                shape[k] = values[values.Count / 2];
-            }
-            targetWeights = DenseFaceModel.Weights(shape, identityStrength); armed = true; return;
-        }
         float eyeMin = 1, eyeMax = 0, mouthMin = 1, mouthMax = 0;
         var eyes = new List<float>(); var mouths = new List<float>();
         foreach (var sample in samples)
@@ -266,9 +200,8 @@ public class HeadFaceFusion : MonoBehaviour
         if (eyeMax - eyeMin > maximumRatioSpread || mouthMax - mouthMin > maximumRatioSpread)
         { Debug.Log("Head morph: unstable measurements; playing text only.", this); return; }
         eyes.Sort(); mouths.Sort();
-        Vector4 legacyWeights = HeadMorphWeights.Calculate(eyes[eyes.Count / 2], mouths[mouths.Count / 2],
+        targetWeights = HeadMorphWeights.Calculate(eyes[eyes.Count / 2], mouths[mouths.Count / 2],
             referenceEyeSpacing, referenceMouthWidth, maximumShapeWeight);
-        targetWeights = new[] { legacyWeights.x, legacyWeights.y, legacyWeights.z, legacyWeights.w };
         armed = true;
     }
 
@@ -321,9 +254,6 @@ public class HeadFaceFusion : MonoBehaviour
         }
         if (sourceRenderer != null) sourceRenderer.enabled = sourceWasEnabled;
         if (morphObject != null) { morphObject.SetActive(false); Destroy(morphObject); }
-        for (int i = 0; i < hiddenRenderers.Count; i++) if (hiddenRenderers[i] != null) hiddenRenderers[i].enabled = hiddenStates[i];
-        hiddenRenderers.Clear(); hiddenStates.Clear();
-        if (generatedDenseMesh != null) { Destroy(generatedDenseMesh); generatedDenseMesh = null; }
         morphRenderer = null; morphObject = null; sourceRenderer = null;
         if (frame != null) { Destroy(frame); frame = null; }
         samples.Clear(); ready = false; inFlight = false;

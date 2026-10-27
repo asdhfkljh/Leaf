@@ -1,91 +1,79 @@
-# 3DDFA identity reconstruction for Unity
+# Head identity morph (Unity BlendShapes)
 
-SampleScene and Test now default to **Dense3DDFA** on HeadFaceFusion. Unity captures
-camera images; MediaPipe localizes a face; official 3DDFA_V2 MobileNet ONNX estimates
-40 identity coefficients on CPU. These drive the SAME BFM basis in Unity, eliminating
-the old heuristic mapping from two measured proportions to an unrelated head.
-Pose and expression estimates are used for inference/crop refinement only, not applied
-to the avatar. Camera photographs are not used as textures.
+High now changes the actual Head geometry, preserving the source white material.
+No cropped face atlas, photographic overlay, or facial feature patch mesh is used.
+The first version supports eye spacing and mouth width, each with wide/narrow targets.
+It approximates these proportions; it does not reconstruct a person's complete identity.
 
-## Run on this Mac
+## Play in SampleScene
 
-The local model files and ONNX Runtime have been prepared. In Unity:
+1. Enter Play and allow Unity camera access. Wait for `Head morph: local detector ready`.
+2. Face the camera with eyes open and a relaxed, closed mouth for about two seconds.
+3. Press H (or finish a recording classified High). The controller freezes the median
+   of three fresh, stable measurements. When text travels toward the ear, shapes fade
+   in over 1.5 seconds. After text disappears, they hold for 1 second, then return over
+   1 second. L/R cancels immediately. Missing/invalid measurements play text only.
+4. During Play, expand the Head hierarchy and select `Head BlendShape renderer`.
+   Its SkinnedMeshRenderer exposes EyeSpacingWide, EyeSpacingNarrow, MouthWide,
+   MouthNarrow. Sliders can be checked individually from 0 to 100. Do not set both
+   directions of the same feature simultaneously. The next sequence overwrites manual
+   slider changes. Source Head geometry and materials are restored when Play ends.
 
-1. Open SampleScene or Test. Stop any old Play session before reloading changed scripts.
-2. Optionally run **Tools > Leaf > Validate 3DDFA Face Mapping**. It independently compares
-   Python's reference geometry with the actual baked Unity BlendShapes and checks reset.
-3. Enter Play and allow camera access. Wait for `3DDFA: CPU reconstruction ready`.
-4. Face the camera in good lighting with a relaxed expression for three stable samples,
-   then press H or finish a voice recording classified High. Text travel starts the
-   1.5-second identity morph; after text disappears, hold 1 second and fade back over 1 second.
-5. L/R cancels. No valid recent/stable measurements means text only, with a Console reason.
-   `Identity Strength` controls the proportion of the estimated shape applied (default 1).
+The existing High voice rules and H preview use the same four sequence events.
+This retains the original Head object/anchors. At runtime a SkinnedMeshRenderer using
+an authored mesh replaces rendering of the original MeshRenderer; the source FBX is
+not overwritten. BlendShapes move the original topology's vertices and normals.
+Empty eye sockets remain empty; this task does not add eyeballs or expression animation.
 
-The visible object under Head is `3DDFA matched identity face`, with 80 paired identity
-BlendShapes (40 positive/negative coefficient pairs). The original Head renderers are
-retained and restored when this component/Play stops. Anchors and the existing High events
-are reused. The BFM template is a FACE surface: it has no complete back-of-head, neck or
-separate eyeballs. This is intentional for similarity evaluation, not a finished full head.
+## Assets and tuning
 
-## Install on another machine
+`Assets/Models/HeadMorph.asset` contains the four persistent BlendShapes. The editor
+command **Tools > Leaf > Rebuild Head BlendShapes** reproducibly authors these shapes
+from Assets/head.fbx using smooth anatomical influence regions. It preserves the mesh
+asset GUID. The builder is calibrated to this source model's size, orientation and
+anatomical regions; changing to another model requires recalibration. These are
+procedurally authored shape targets, not artist-sculpted identity reconstruction.
+
+On HeadFaceFusion, Reference Eye Spacing (.52) and Reference Mouth Width (.42) are
+adjustable artistic reference ratios for this Head, not universal human measurements.
+The detector measures eye-center distance / cheek width and mouth-corner distance /
+cheek width. Ratios above/below reference select opposite shapes. Full shape controls
+represent roughly +/-20% eye-center movement and +/-25% local mouth-width scaling,
+with smooth boundaries, not a guarantee of exact measured final dimensions.
+Maximum Shape Weight defaults to 75 to keep changes moderate. Verify proportions on
+several relaxed frontal faces before choosing a final installation calibration.
+
+HeadFaceFusion requires three valid measurements with ratio spread <= .035 and oldest
+sample age <= 2 s. Keep Maximum Snapshot Age longer than the sampling window if changing
+sample count/interval. Closed eyes, open mouth, significant roll/yaw, clipped/small faces,
+and invalid numbers are rejected to avoid mistaking expression/perspective for identity.
+These gates are heuristic; an ordinary webcam cannot accurately recover full 3D shape.
+
+## Local detector setup (macOS Apple Silicon)
+
+From the project root:
 
 ```sh
 python3 -m venv Tools/FaceFusion/.venv
 Tools/FaceFusion/.venv/bin/python -m pip install -r Tools/FaceFusion/requirements.txt
 curl -fL https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task -o Tools/FaceFusion/face_landmarker.task
-Tools/FaceFusion/.venv/bin/python Tools/FaceFusion/prepare_3ddfa.py
 ```
 
-Preparation downloads files from official cleardusk/3DDFA_V2 commit
-`1b6c67601abffc1e9f248b291708aef0e43b55ae` and the official pre-converted ONNX download.
-An existing official ONNX file can be passed with `--onnx /absolute/path/to/mb1_120x120.onnx`;
-a local upstream checkout can be passed with `--source /absolute/path/to/3DDFA_V2`.
-The verified ONNX checksum is enforced. All derived geometry, basis data, validation data,
-and inference files live under ignored `Tools/FaceFusion/3ddfa-data/`. They are not in Git.
-Python and models remain external desktop dependencies, not a packaged standalone player.
+Python Executable defaults to the project-relative virtual environment above. Model and
+venv are ignored by Git and must be installed separately on other machines. This remains
+a desktop Editor prototype; Python/model are not packaged in a standalone build.
+Unity owns the camera and sends upright JPEGs to a persistent local MediaPipe process.
+Only valid numeric proportions return. Images are not saved or uploaded to a service.
+Exit Play or disable the component to release the camera and process.
 
-**License:** upstream 3DDFA_V2 code is MIT (attribution in THIRD_PARTY_3DDFA_LICENSE.txt).
-The supplied modified BFM2009 model is **academic-use only**. The preparation step preserves
-its upstream notice. Code licensing does not grant permission for commercial BFM use.
-See https://github.com/cleardusk/3DDFA_V2/blob/master/bfm/readme.md for model terms.
+## Verification
 
-## How the mapping works
-
-`prepare_3ddfa.py` exports BFM's mean mesh and 40 shape basis vectors. Each full positive
-or negative BlendShape represents three parameter-standard-deviations in one identity
-direction. `tddfa_backend.py` predicts coefficients using the official input preprocessing,
-parameter normalization, and second-pass landmark crop. It excludes expression from the
-reconstructed avatar and clamps standardized shape coefficients to [-3,3]. Unity converts
-those same coefficients to paired weights without landmark-to-mesh retargeting.
-
-The local worker and Unity template exchange a model/basis signature. A mismatch prevents
-morphing instead of silently applying coefficients to the wrong topology. Three fresh
-frames are median-filtered; excessive coefficient spread prevents capture. Identity is
-frozen once per accepted High sequence, so subsequent movement cannot change that sequence.
-The old `Maximum Shape Weight` and ratio reference controls apply only to LegacyProportions.
-The 3DDFA sample interval defaults to .15 s; this is sampling cadence, not a measured end-to-end
-frame-rate guarantee. Pose, occlusion, lighting and the model prior still limit likeness.
-
-Images stay in process memory and are passed only to the local worker; no face frames are
-saved or uploaded. Model downloads use the network, but image inference does not. Disable
-or exit Play to release the camera and process.
-
-## Verification and fallback
-
-```sh
-Tools/FaceFusion/.venv/bin/python -m unittest discover -s Tools/FaceFusion -p 'test_*.py' -v
-Tools/FaceFusion/.venv/bin/python -m pip check
-```
-
-15 tests cover legacy measurements, crop padding, malformed/no-face recovery, actual ONNX
-initialization, invalid coefficients, and Python-vs-exported-template geometry. Unity's
-mapping menu checks all 38,365 vertices against Python and validates reset. Independent
-Unity rendering/baking also checks the actual runtime renderer. Official neutral portrait
-inference returned valid 40-dimensional shape data; its measured 3DDFA two-pass time was
-about 11 ms on this Mac, excluding MediaPipe, camera capture, communication and rendering.
-Live camera orientation, perceived likeness, and simultaneous voice/text/morph playback
-still require interactive acceptance in the user's already-open Unity project.
-
-To compare the previous implementation, select **Legacy Proportions** in the component's
-Backend field and restart Play. Its original mesh asset is preserved. See
-[LEGACY_BLENDSHAPES.md](LEGACY_BLENDSHAPES.md) for that workflow.
+Run `Tools/FaceFusion/.venv/bin/python -m unittest discover -s Tools/FaceFusion -p 'test_*.py' -v`.
+Tests cover normalized measurements, camera-distance/translation/roll invariance,
+expression/pose rejection, malformed images and actual-model no-face recovery.
+The MediaPipe official business-person sample was also verified to return valid numeric
+ratios without an atlas. **Tools > Leaf > Validate Head BlendShapes** checks four nonempty
+shape frames, actual baked vertex displacement,
+paired weight selection/clamping, preservation of material, and rendered wide/narrow
+comparisons. Live camera authorization and synchronized voice/text/morph playback still
+need an interactive hardware run in the user's already-open Unity project.

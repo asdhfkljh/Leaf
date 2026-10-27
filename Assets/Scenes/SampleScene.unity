@@ -978,6 +978,3 @@ MonoBehaviour:
   visualController: {fileID: 990967480}
   head: {fileID: 1232253402}
   morphMesh: {fileID: 4300000, guid: 7e9773fb69d0c463ab60cb1277e58568, type: 2}
-  backend: 1
-  identityStrength: 1
-  sampleInterval: 0.15
