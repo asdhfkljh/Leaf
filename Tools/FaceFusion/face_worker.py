@@ -1,4 +1,5 @@
 """Local face proportions for authored Unity BlendShapes. Never returns camera textures."""
+import argparse
 import base64
 import json
 import sys
@@ -45,6 +46,13 @@ def measure(landmarks, width, height, np):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--backend', choices=['mediapipe', '3ddfa'], default='mediapipe')
+    args = parser.parse_args()
+    engine = None
+    if args.backend == '3ddfa':
+        from tddfa_backend import TDDFAEngine
+        engine = TDDFAEngine()
     import cv2
     import mediapipe as mp
     import numpy as np
@@ -52,7 +60,7 @@ def main():
         base_options=mp.tasks.BaseOptions(model_asset_path=str(Path(__file__).with_name('face_landmarker.task'))),
         num_faces=1, min_face_detection_confidence=.7, min_face_presence_confidence=.7)
     with mp.tasks.vision.FaceLandmarker.create_from_options(options) as detector:
-        print(json.dumps({'type': 'ready'}), flush=True)
+        print(json.dumps({'type': 'ready', 'backend': args.backend, 'model_id': engine.model_id if engine else ''}), flush=True)
         for line in sys.stdin:
             try:
                 packet = json.loads(line)
@@ -66,7 +74,9 @@ def main():
                                               270: cv2.ROTATE_90_COUNTERCLOCKWISE}[rotation])
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 result = detector.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb))
-                ratios = measure(result.face_landmarks[0], frame.shape[1], frame.shape[0], np) if result.face_landmarks else None
+                ratios = None
+                if result.face_landmarks:
+                    ratios = engine.infer(frame, result.face_landmarks[0]) if engine else measure(result.face_landmarks[0], frame.shape[1], frame.shape[0], np)
                 reply = {'type': 'face', 'id': packet['id'], 'valid': ratios is not None}
                 if ratios:
                     reply.update(ratios)

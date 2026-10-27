@@ -124,3 +124,6 @@ __pycache__/
 # Local face detector environment and downloaded model
 /Tools/FaceFusion/.venv/
 /Tools/FaceFusion/*.task
+
+# Locally downloaded academic-use 3DDFA/BFM model data and generated template
+/Tools/FaceFusion/3ddfa-data/
