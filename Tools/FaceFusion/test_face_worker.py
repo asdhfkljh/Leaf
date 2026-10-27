@@ -5,75 +5,81 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-
 import cv2
 import numpy as np
-from face_worker import extract
+from face_worker import measure
 
 
-class ExtractionTests(unittest.TestCase):
+class ProportionTests(unittest.TestCase):
     def setUp(self):
-        self.frame = np.random.default_rng(7).integers(0, 255, (480, 640, 3), dtype=np.uint8)
-        self.points = [SimpleNamespace(x=.5, y=.5) for _ in range(478)]
-        for ids, cx, cy in [([33, 133, 159, 145, 70, 63, 105, 66, 107], .35, .38),
-                            ([263, 362, 386, 374, 300, 293, 334, 296, 336], .65, .38),
-                            ([61, 291, 0, 17, 13, 14], .5, .65)]:
-            for i, index in enumerate(ids):
-                self.points[index] = SimpleNamespace(x=cx + (i % 3 - 1) * .025, y=cy + (i % 2 - .5) * .03)
-        self.points[33] = SimpleNamespace(x=.32, y=.38)
-        self.points[263] = SimpleNamespace(x=.68, y=.38)
+        self.p = [SimpleNamespace(x=.5, y=.5) for _ in range(478)]
+        for index, xy in {234:(.2,.5),454:(.8,.5),10:(.5,.15),152:(.5,.85),
+                          33:(.30,.38),133:(.40,.38),263:(.70,.38),362:(.60,.38),
+                          159:(.35,.36),145:(.35,.40),386:(.65,.36),374:(.65,.40),
+                          1:(.5,.53),61:(.38,.65),291:(.62,.65),13:(.5,.645),14:(.5,.655)}.items():
+            self.p[index] = SimpleNamespace(x=xy[0], y=xy[1])
 
-    def test_three_regions_return_decodable_atlas(self):
-        atlas = extract(self.frame, self.points, cv2, np)
-        image = cv2.imdecode(np.frombuffer(base64.b64decode(atlas), dtype=np.uint8), cv2.IMREAD_COLOR)
-        self.assertEqual(image.shape, (128, 768, 3))
-        self.assertGreater(float(image.var()), 10)
+    def test_expected_ratios(self):
+        result = measure(self.p,640,480,np)
+        self.assertAlmostEqual(result['eye_spacing_ratio'], .5)
+        self.assertAlmostEqual(result['mouth_width_ratio'], .4)
+        self.assertNotIn('atlas', result)
 
-    def test_large_yaw_rejected(self):
-        self.points[1].x = .9
-        self.assertIsNone(extract(self.frame, self.points, cv2, np))
+    def test_camera_distance_and_translation_invariance(self):
+        expected = measure(self.p,640,480,np)
+        for point in self.p:
+            point.x = (point.x-.5)*.8+.52
+            point.y = (point.y-.5)*.8+.48
+        actual = measure(self.p,640,480,np)
+        self.assertAlmostEqual(actual['eye_spacing_ratio'],expected['eye_spacing_ratio'])
+        self.assertAlmostEqual(actual['mouth_width_ratio'],expected['mouth_width_ratio'])
 
-    def test_camera_roll_rejected(self):
-        self.points[263].y = .8
-        self.assertIsNone(extract(self.frame, self.points, cv2, np))
+    def test_small_roll_uses_euclidean_distances(self):
+        expected = measure(self.p,640,480,np)
+        angle=.05
+        rotation=np.array([[np.cos(angle),-np.sin(angle)],[np.sin(angle),np.cos(angle)]])
+        for p in self.p:
+            q=rotation@np.array([(p.x-.5)*640,(p.y-.5)*480])
+            p.x=q[0]/640+.5; p.y=q[1]/480+.5
+        actual=measure(self.p,640,480,np)
+        self.assertAlmostEqual(actual['eye_spacing_ratio'],expected['eye_spacing_ratio'])
+        self.assertAlmostEqual(actual['mouth_width_ratio'],expected['mouth_width_ratio'])
 
-    def test_blurred_face_rejected(self):
-        self.assertIsNone(extract(np.zeros_like(self.frame), self.points, cv2, np))
+    def test_yaw_rejected(self):
+        self.p[1].x=.8
+        self.assertIsNone(measure(self.p,640,480,np))
 
-    def test_clipped_crop_rejected(self):
-        self.points[70].x = -.1
-        self.assertIsNone(extract(self.frame, self.points, cv2, np))
+    def test_open_mouth_rejected(self):
+        self.p[14].y=.75
+        self.assertIsNone(measure(self.p,640,480,np))
+
+    def test_blink_rejected(self):
+        self.p[145].y=self.p[159].y
+        self.assertIsNone(measure(self.p,640,480,np))
+
+    def test_clipped_face_rejected(self):
+        self.p[234].x=0
+        self.assertIsNone(measure(self.p,640,480,np))
+
+    def test_non_finite_rejected(self):
+        self.p[1].x=float('nan')
+        self.assertIsNone(measure(self.p,640,480,np))
 
     def test_small_face_rejected(self):
-        self.points[33].x = .49
-        self.points[263].x = .51
-        self.assertIsNone(extract(self.frame, self.points, cv2, np))
-
-    def test_atlas_slots_preserve_image_left_right(self):
-        self.frame[:, :300] = (0, 0, 255)
-        self.frame[:, 340:] = (255, 0, 0)
-        atlas = extract(self.frame, self.points, cv2, np)
-        image = cv2.imdecode(np.frombuffer(base64.b64decode(atlas), dtype=np.uint8), cv2.IMREAD_COLOR)
-        self.assertGreater(image[:, :256, 2].mean(), 200)
-        self.assertGreater(image[:, 256:512, 0].mean(), 200)
+        self.assertIsNone(measure(self.p,100,100,np))
 
 
 class WorkerTests(unittest.TestCase):
-    def test_model_no_face_and_malformed_frame_recovery(self):
-        model = Path(__file__).with_name('face_landmarker.task')
-        self.assertTrue(model.exists(), 'Download official model before running integration tests')
-        ok, jpeg = cv2.imencode('.jpg', np.zeros((480, 640, 3), dtype=np.uint8))
-        self.assertTrue(ok)
-        payload = json.dumps({'id': 9, 'image': base64.b64encode(jpeg).decode(), 'rotation': 90})
-        worker = subprocess.run([sys.executable, str(Path(__file__).with_name('face_worker.py'))],
-                                input='{"id":8,"image":"bad"}\n' + payload + '\n',
-                                text=True, capture_output=True, timeout=60)
-        self.assertEqual(worker.returncode, 0, worker.stderr)
-        replies = [json.loads(line) for line in worker.stdout.splitlines()]
-        self.assertEqual(replies[0]['type'], 'ready')
-        self.assertEqual(replies[1]['type'], 'error')
-        self.assertEqual(replies[2], {'type': 'face', 'id': 9, 'atlas': ''})
+    def test_model_no_face_and_bad_frame_recovery(self):
+        ok,jpeg=cv2.imencode('.jpg',np.zeros((480,640,3),dtype=np.uint8));self.assertTrue(ok)
+        packet=json.dumps({'id':9,'image':base64.b64encode(jpeg).decode(),'rotation':90})
+        result=subprocess.run([sys.executable,str(Path(__file__).with_name('face_worker.py'))],
+                              input='{"id":8,"image":"bad"}\n'+packet+'\n',text=True,capture_output=True,timeout=60)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        replies=[json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(replies[0]['type'],'ready')
+        self.assertEqual(replies[1]['type'],'error')
+        self.assertEqual(replies[2],{'type':'face','id':9,'valid':False})
 
 
-if __name__ == '__main__':
-    unittest.main()
+if __name__=='__main__': unittest.main()

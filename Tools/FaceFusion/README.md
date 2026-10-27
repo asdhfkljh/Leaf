@@ -1,14 +1,55 @@
-# Head face fusion (desktop Unity Editor prototype)
+# Head identity morph (Unity BlendShapes)
 
-SampleScene has HeadFaceFusion on Authoritycontroller. The existing High classifier and H
-preview both use the same accepted-sequence events. Camera capture warms up on Play;
-High freezes a recent valid frontal face. Text movement starts the 1.5 s feature fade-in.
-When the last character disappears, the result holds for 1 s and fades out over 1 s.
-Low, R, disabling the controller, and a new accepted sequence cancel the previous fusion.
-Missing permission, camera, model, detector, or valid face never blocks the text effect.
-A face acquired after High will only be used by the next High trigger.
+High now changes the actual Head geometry, preserving the source white material.
+No cropped face atlas, photographic overlay, or facial feature patch mesh is used.
+The first version supports eye spacing and mouth width, each with wide/narrow targets.
+It approximates these proportions; it does not reconstruct a person's complete identity.
 
-## Local setup (macOS Apple Silicon)
+## Play in SampleScene
+
+1. Enter Play and allow Unity camera access. Wait for `Head morph: local detector ready`.
+2. Face the camera with eyes open and a relaxed, closed mouth for about two seconds.
+3. Press H (or finish a recording classified High). The controller freezes the median
+   of three fresh, stable measurements. When text travels toward the ear, shapes fade
+   in over 1.5 seconds. After text disappears, they hold for 1 second, then return over
+   1 second. L/R cancels immediately. Missing/invalid measurements play text only.
+4. During Play, expand the Head hierarchy and select `Head BlendShape renderer`.
+   Its SkinnedMeshRenderer exposes EyeSpacingWide, EyeSpacingNarrow, MouthWide,
+   MouthNarrow. Sliders can be checked individually from 0 to 100. Do not set both
+   directions of the same feature simultaneously. The next sequence overwrites manual
+   slider changes. Source Head geometry and materials are restored when Play ends.
+
+The existing High voice rules and H preview use the same four sequence events.
+This retains the original Head object/anchors. At runtime a SkinnedMeshRenderer using
+an authored mesh replaces rendering of the original MeshRenderer; the source FBX is
+not overwritten. BlendShapes move the original topology's vertices and normals.
+Empty eye sockets remain empty; this task does not add eyeballs or expression animation.
+
+## Assets and tuning
+
+`Assets/Models/HeadMorph.asset` contains the four persistent BlendShapes. The editor
+command **Tools > Leaf > Rebuild Head BlendShapes** reproducibly authors these shapes
+from Assets/head.fbx using smooth anatomical influence regions. It preserves the mesh
+asset GUID. The builder is calibrated to this source model's size, orientation and
+anatomical regions; changing to another model requires recalibration. These are
+procedurally authored shape targets, not artist-sculpted identity reconstruction.
+
+On HeadFaceFusion, Reference Eye Spacing (.52) and Reference Mouth Width (.42) are
+adjustable artistic reference ratios for this Head, not universal human measurements.
+The detector measures eye-center distance / cheek width and mouth-corner distance /
+cheek width. Ratios above/below reference select opposite shapes. Full shape controls
+represent roughly +/-20% eye-center movement and +/-25% local mouth-width scaling,
+with smooth boundaries, not a guarantee of exact measured final dimensions.
+Maximum Shape Weight defaults to 75 to keep changes moderate. Verify proportions on
+several relaxed frontal faces before choosing a final installation calibration.
+
+HeadFaceFusion requires three valid measurements with ratio spread <= .035 and oldest
+sample age <= 2 s. Keep Maximum Snapshot Age longer than the sampling window if changing
+sample count/interval. Closed eyes, open mouth, significant roll/yaw, clipped/small faces,
+and invalid numbers are rejected to avoid mistaking expression/perspective for identity.
+These gates are heuristic; an ordinary webcam cannot accurately recover full 3D shape.
+
+## Local detector setup (macOS Apple Silicon)
 
 From the project root:
 
@@ -18,48 +59,21 @@ Tools/FaceFusion/.venv/bin/python -m pip install -r Tools/FaceFusion/requirement
 curl -fL https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task -o Tools/FaceFusion/face_landmarker.task
 ```
 
-The virtual environment and model are ignored by Git. Install them on each new machine.
-Python Executable defaults to that project-relative environment path. For Windows,
-configure a Python executable explicitly. Python, the worker and model are external
-desktop dependencies; they are not packaged into a standalone build.
+Python Executable defaults to the project-relative virtual environment above. Model and
+venv are ignored by Git and must be installed separately on other machines. This remains
+a desktop Editor prototype; Python/model are not packaged in a standalone build.
+Unity owns the camera and sends upright JPEGs to a persistent local MediaPipe process.
+Only valid numeric proportions return. Images are not saved or uploaded to a service.
+Exit Play or disable the component to release the camera and process.
 
-Allow Unity camera access when macOS prompts. Wait for `Face fusion: local detector ready`
-in Console, face the camera in good lighting, then press H. L and R cancel fusion.
-The voice path triggers it automatically when all High feature rules match.
-The camera is owned by Unity, not Python. JPEG frames are sampled at most twice per second,
-one request in flight. PNG feature atlases return on stdout and remain in memory; no
-camera images are written to disk or sent to an external service. The worker stops when
-its Unity component is disabled or Play ends.
+## Verification
 
-## Calibration
-
-The Head asset has empty eye sockets. Three generated feature grids conform to the mesh,
-bridging missing eye surfaces. Mesh readability is enabled to support surface sampling.
-Original meshes and materials are preserved. Feature positions use camera-facing bounds
-at initialization and are attached to Head, so camera movement does not slide the features.
-This is a static-head prototype, not expression retargeting or identity reconstruction.
-
-On HeadFaceFusion, Left Eye / Right Eye / Mouth are `(center x, center y, width, height)`
-in normalized front-view Head bounds. Names refer to the screen's left/right. Defaults
-are calibrated for this scene's front-facing camera. After changing these positions or
-Head pose, restart Play to regenerate surface grids. Saturation and fade timings can be
-adjusted during Play. Extreme side views, occlusion, small faces, and blurred crops are
-rejected. Brightness varies with real lighting; final artistic tuning needs a real face.
-The worker currently uses crop bounding boxes with feathered elliptical masks; it does
-not perform full landmark triangle warping or texture color matching.
-
-## Validation
-
-Run `Tools/FaceFusion/.venv/bin/python -m unittest discover -s Tools/FaceFusion -p 'test_*.py'`.
-These tests cover feature extraction, rejection and the actual model's no-face response.
-Unity scripts and shader must also compile. Hardware acceptance: H captures once; moving
-your face afterward leaves the displayed snapshot unchanged; features appear during text
-travel, hold after disappearance and fade away; L/R clears them; no face plays text only;
-exiting Play releases the camera and worker. Camera hardware and permissions require an
-interactive Unity session.
-
-Checked locally: all 8 Python tests passed; `pip check` passed; actual landmark inference
-on MediaPipe's official portrait sample produced a valid three-region atlas; Unity C#
-compilation and isolated Unity shader/feature-grid rendering passed. Live webcam permissions,
-video orientation and simultaneous text/fusion playback still need an interactive hardware
-acceptance run because the main project was locked by another Unity instance.
+Run `Tools/FaceFusion/.venv/bin/python -m unittest discover -s Tools/FaceFusion -p 'test_*.py' -v`.
+Tests cover normalized measurements, camera-distance/translation/roll invariance,
+expression/pose rejection, malformed images and actual-model no-face recovery.
+The MediaPipe official business-person sample was also verified to return valid numeric
+ratios without an atlas. **Tools > Leaf > Validate Head BlendShapes** checks four nonempty
+shape frames, actual baked vertex displacement,
+paired weight selection/clamping, preservation of material, and rendered wide/narrow
+comparisons. Live camera authorization and synchronized voice/text/morph playback still
+need an interactive hardware run in the user's already-open Unity project.

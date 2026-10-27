@@ -977,4 +977,4 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   visualController: {fileID: 990967480}
   head: {fileID: 1232253402}
-  fusionShader: {fileID: 4800000, guid: 936e8bc40f374e17a809f6f71c6f1810, type: 3}
+  morphMesh: {fileID: 4300000, guid: 7e9773fb69d0c463ab60cb1277e58568, type: 2}

@@ -1,52 +1,56 @@
-"""JSON-lines image processor. Camera ownership and frame timing stay in Unity."""
+"""Local face proportions for authored Unity BlendShapes. Never returns camera textures."""
 import base64
 import json
 import sys
 from pathlib import Path
 
 
-def extract(frame, landmarks, cv2, np):
-    h, w = frame.shape[:2]
-    p = np.array([(v.x * w, v.y * h) for v in landmarks], dtype=np.float32)
-    # Reject clipped faces, strong yaw/roll, and unusably small or blurred captures.
-    eye_a, eye_b = p[33], p[263]
-    span = float(np.linalg.norm(eye_b - eye_a))
-    if span < 65 or abs(float(eye_b[1] - eye_a[1])) > span * .22:
+def measure(landmarks, width, height, np):
+    """Use relaxed frontal frames; normalize distances so camera distance/roll do not change identity."""
+    p = np.array([(v.x * width, v.y * height) for v in landmarks], dtype=np.float64)
+    if p.shape != (478, 2) or not np.isfinite(p).all():
         return None
-    nose = p[1]
-    mid = (eye_a + eye_b) / 2
-    if abs(float(nose[0] - mid[0])) > span * .23:
+    distance = lambda a, b: float(np.linalg.norm(p[a] - p[b]))
+    face_width = distance(234, 454)
+    outer_span = distance(33, 263)
+    if face_width < 120 or outer_span < 65:
         return None
-    regions = [[33, 133, 159, 145, 70, 63, 105, 66, 107],
-               [263, 362, 386, 374, 300, 293, 334, 296, 336],
-               [61, 291, 0, 17, 13, 14]]
-    # Keep image-left eye in slot zero regardless of landmark naming.
-    regions[:2] = sorted(regions[:2], key=lambda ids: float(p[ids, 0].mean()))
-    atlas = np.zeros((128, 768, 3), dtype=np.uint8)
-    for i, ids in enumerate(regions):
-        points = p[ids]
-        lo, hi = points.min(axis=0), points.max(axis=0)
-        pad = (hi - lo) * np.array([.18, .30])
-        x0, y0 = np.floor(lo - pad).astype(int)
-        x1, y1 = np.ceil(hi + pad).astype(int)
-        if x0 < 0 or y0 < 0 or x1 >= w or y1 >= h or x1 <= x0 or y1 <= y0:
+    # Reject clipped contours and strong roll/yaw, rather than deforming Head from perspective distortion.
+    for index in [234, 454, 10, 152, 33, 263, 61, 291]:
+        if not (0.02 * width < p[index, 0] < .98 * width and .02 * height < p[index, 1] < .98 * height):
             return None
-        crop = frame[y0:y1, x0:x1]
-        if i == 2 and cv2.Laplacian(cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var() < 12:
-            return None
-        atlas[:, i * 256:(i + 1) * 256] = cv2.resize(crop, (256, 128))
-    ok, png = cv2.imencode('.png', atlas)
-    return base64.b64encode(png).decode('ascii') if ok else None
+    eye_mid = (p[33] + p[263]) / 2
+    if abs(float(p[33, 1] - p[263, 1])) > outer_span * .18:
+        return None
+    if abs(float(p[1, 0] - eye_mid[0])) > outer_span * .18:
+        return None
+    mouth_mid = (p[61] + p[291]) / 2
+    nose_drop = float(p[1, 1] - eye_mid[1]) / outer_span
+    if not (.12 < nose_drop < .70) or mouth_mid[1] <= p[1, 1]:
+        return None
+    mouth_width = distance(61, 291)
+    if mouth_width < 30 or distance(13, 14) / mouth_width > .12:
+        return None  # Open mouth is expression, not identity.
+    if distance(159, 145) / max(distance(33, 133), 1) < .12:
+        return None
+    if distance(386, 374) / max(distance(263, 362), 1) < .12:
+        return None
+    eye_left = (p[33] + p[133]) / 2
+    eye_right = (p[263] + p[362]) / 2
+    eye_ratio = float(np.linalg.norm(eye_right - eye_left)) / face_width
+    mouth_ratio = mouth_width / face_width
+    if not (.2 < eye_ratio < .8 and .2 < mouth_ratio < .8):
+        return None
+    return {'eye_spacing_ratio': eye_ratio, 'mouth_width_ratio': mouth_ratio}
 
 
 def main():
     import cv2
     import mediapipe as mp
     import numpy as np
-    model = Path(__file__).with_name('face_landmarker.task')
     options = mp.tasks.vision.FaceLandmarkerOptions(
-        base_options=mp.tasks.BaseOptions(model_asset_path=str(model)), num_faces=1,
-        min_face_detection_confidence=.7, min_face_presence_confidence=.7)
+        base_options=mp.tasks.BaseOptions(model_asset_path=str(Path(__file__).with_name('face_landmarker.task'))),
+        num_faces=1, min_face_detection_confidence=.7, min_face_presence_confidence=.7)
     with mp.tasks.vision.FaceLandmarker.create_from_options(options) as detector:
         print(json.dumps({'type': 'ready'}), flush=True)
         for line in sys.stdin:
@@ -57,16 +61,16 @@ def main():
                 if frame is None:
                     raise ValueError('Invalid JPEG')
                 rotation = packet.get('rotation', 0)
-                if rotation == 90:
-                    frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-                elif rotation == 180:
-                    frame = cv2.rotate(frame, cv2.ROTATE_180)
-                elif rotation == 270:
-                    frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+                if rotation in [90, 180, 270]:
+                    frame = cv2.rotate(frame, {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180,
+                                              270: cv2.ROTATE_90_COUNTERCLOCKWISE}[rotation])
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 result = detector.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb))
-                atlas = extract(frame, result.face_landmarks[0], cv2, np) if result.face_landmarks else None
-                print(json.dumps({'type': 'face', 'id': packet['id'], 'atlas': atlas or ''}), flush=True)
+                ratios = measure(result.face_landmarks[0], frame.shape[1], frame.shape[0], np) if result.face_landmarks else None
+                reply = {'type': 'face', 'id': packet['id'], 'valid': ratios is not None}
+                if ratios:
+                    reply.update(ratios)
+                print(json.dumps(reply), flush=True)
             except Exception as exc:
                 print(json.dumps({'type': 'error', 'message': str(exc)}), flush=True)
 
