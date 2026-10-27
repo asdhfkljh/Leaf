@@ -376,7 +376,7 @@ MonoBehaviour:
   dissolveParticles: {fileID: 0}
   maximumSpeechCharacters: 24
   speechCharacterStride: 3
-  speechCloudRadius: {x: 4, y: 3, z: 2}
+  speechCloudRadius: {x: 4, y: 3, z: 4}
   speechFloatAmplitude: 0.035
   speechFloatSpeed: 0.65
   highAuthorityThreshold: 70
@@ -462,6 +462,8 @@ MonoBehaviour:
   lowOrbitDuration: 2.4
   lowOrbitTurns: 0.8
   rotateTextWithOrbit: 1
+  faceCameraDuringLowOrbit: 1
+  lowOrbitCamera: {fileID: 0}
   lowDriftDuration: 1.8
   lowDriftDistance: 1.2
   lowDriftUpwardBias: 0.25
@@ -538,6 +540,11 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+  lowDissolveDuration: 3.5
+  lowDissolveGrid: 7
+  lowParticleDensity: 0.645
+  lowDissolveParticleLifetime: 2
+  lowDissolveParticleSpeed: 0.12
 --- !u!4 &990967481
 Transform:
   m_ObjectHideFlags: 0
