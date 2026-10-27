@@ -87,6 +87,11 @@ public class AuthorityVisualController : MonoBehaviour
     [SerializeField, Min(0.05f)] private float lowOrbitDuration = 2.4f;
     [SerializeField, Min(0f)] private float lowOrbitTurns = 0.8f;
     [SerializeField] private bool rotateTextWithOrbit = true;
+    [Tooltip("Keep each glyph facing the viewing camera while its position orbits Head.")]
+    [SerializeField] private bool faceCameraDuringLowOrbit = true;
+    [SerializeField] private Camera lowOrbitCamera;
+    private bool lowOrbitBillboarding;
+    private Vector3[][] lowOrbitBaseVertices;
     [HideInInspector, SerializeField, Min(0.05f)] private float lowDriftDuration = 1.8f;
     [HideInInspector, SerializeField, Min(0f)] private float lowDriftDistance = 1.2f;
     #pragma warning disable 0414 // Legacy scene settings retained for compatibility.
@@ -221,6 +226,11 @@ public class AuthorityVisualController : MonoBehaviour
 
     private void LateUpdate()
     {
+        if (lowOrbitBillboarding)
+        {
+            FaceLowOrbitCharactersToCamera();
+            return;
+        }
         if (!speechCloudActive || messageText == null) return;
         if (!speechCloudFrozen)
             UpdateSpeechCloud();
@@ -417,6 +427,11 @@ public class AuthorityVisualController : MonoBehaviour
         if (lowStartDelay > 0f)
             yield return new WaitForSeconds(lowStartDelay);
 
+        lowOrbitBaseVertices = speechCloudActive && frozenSpeechVertices != null
+            ? frozenSpeechVertices : CopySpeechVertices();
+        StopAnimatorForMeshControl();
+        lowOrbitBillboarding = faceCameraDuringLowOrbit;
+
         Transform centerTransform = GetOrbitCenter();
         Vector3 center = centerTransform.position;
         Vector3 axis = centerTransform.TransformDirection(lowOrbitAxisLocal).normalized;
@@ -462,10 +477,49 @@ public class AuthorityVisualController : MonoBehaviour
 
         messageText.transform.position = orbitEndPosition;
         messageText.transform.rotation = orbitEndRotation;
+        if (lowOrbitBillboarding)
+        {
+            FaceLowOrbitCharactersToCamera();
+            // Preserve the final facing and positions for the fragment handoff.
+            if (speechCloudActive) frozenSpeechVertices = CopySpeechVertices();
+        }
+        lowOrbitBillboarding = false;
+        lowOrbitBaseVertices = null;
         yield return PlayLowFragmentDissolve();
         if (resetAfterSequenceDelay > 0f)
             yield return new WaitForSeconds(resetAfterSequenceDelay);
         CompleteSequenceAndRestore();
+    }
+
+    private void FaceLowOrbitCharactersToCamera()
+    {
+        Camera viewingCamera = lowOrbitCamera != null ? lowOrbitCamera : Camera.main;
+        if (viewingCamera == null || lowOrbitBaseVertices == null) return;
+        Transform textTransform = messageText.transform;
+        Vector3 scale = textTransform.lossyScale;
+        TMP_TextInfo info = messageText.textInfo;
+        for (int i = 0; i < info.characterCount; i++)
+        {
+            TMP_CharacterInfo character = info.characterInfo[i];
+            if (!character.isVisible) continue;
+            int material = character.materialReferenceIndex;
+            int vertex = character.vertexIndex;
+            Vector3[] source = lowOrbitBaseVertices[material];
+            Vector3 centerLocal = (source[vertex] + source[vertex + 2]) * 0.5f;
+            Vector3 centerWorld = textTransform.TransformPoint(centerLocal);
+            Vector3 forward = viewingCamera.orthographic ? viewingCamera.transform.forward
+                : centerWorld - viewingCamera.transform.position;
+            if (forward.sqrMagnitude < 0.000001f) forward = viewingCamera.transform.forward;
+            Quaternion facing = Quaternion.LookRotation(forward.normalized, viewingCamera.transform.up);
+            for (int corner = 0; corner < 4; corner++)
+            {
+                Vector3 offset = source[vertex + corner] - centerLocal;
+                Vector3 cameraOffset = new Vector3(offset.x * scale.x, offset.y * scale.y, 0f);
+                info.meshInfo[material].vertices[vertex + corner] =
+                    textTransform.InverseTransformPoint(centerWorld + facing * cameraOffset);
+            }
+        }
+        messageText.UpdateVertexData(TMP_VertexDataUpdateFlags.Vertices);
     }
 
     private IEnumerator PlayLowFragmentDissolve()
@@ -943,6 +997,8 @@ public class AuthorityVisualController : MonoBehaviour
 
     private void RestoreVisualState()
     {
+        lowOrbitBillboarding = false;
+        lowOrbitBaseVertices = null;
         ClearLowDissolveMeshes();
         bool clearSpeech = speechCloudActive;
         speechCloudActive = false;
