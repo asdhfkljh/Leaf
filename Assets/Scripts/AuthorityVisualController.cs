@@ -78,7 +78,7 @@ public class AuthorityVisualController : MonoBehaviour
     [SerializeField] private float particleUpwardBias = 0.08f;
     [SerializeField, ColorUsage(true, true)] private Color particleColor = Color.white;
 
-    [Header("Low Authority: Orbit and Drift")]
+    [Header("Low Authority: Orbit")]
     [Tooltip("Head pivot for the orbit. If empty, the Ear Anchor's parent is used.")]
     [SerializeField] private Transform headOrbitCenter;
     [Tooltip("Orbit axis in the Head object's local coordinates.")]
@@ -87,13 +87,36 @@ public class AuthorityVisualController : MonoBehaviour
     [SerializeField, Min(0.05f)] private float lowOrbitDuration = 2.4f;
     [SerializeField, Min(0f)] private float lowOrbitTurns = 0.8f;
     [SerializeField] private bool rotateTextWithOrbit = true;
-    [SerializeField, Min(0.05f)] private float lowDriftDuration = 1.8f;
-    [SerializeField, Min(0f)] private float lowDriftDistance = 1.2f;
-    [SerializeField] private float lowDriftUpwardBias = 0.25f;
-    [SerializeField] private float lowDriftTwist = 35f;
+    [HideInInspector, SerializeField, Min(0.05f)] private float lowDriftDuration = 1.8f;
+    [HideInInspector, SerializeField, Min(0f)] private float lowDriftDistance = 1.2f;
+    #pragma warning disable 0414 // Legacy scene settings retained for compatibility.
+    [HideInInspector, SerializeField] private float lowDriftUpwardBias = 0.25f;
+    [HideInInspector, SerializeField] private float lowDriftTwist = 35f;
     [SerializeField] private AnimationCurve lowOrbitCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
-    [SerializeField] private AnimationCurve lowDriftCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
-    [SerializeField] private AnimationCurve lowFadeCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+    [HideInInspector, SerializeField] private AnimationCurve lowDriftCurve = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
+    [HideInInspector, SerializeField] private AnimationCurve lowFadeCurve = AnimationCurve.Linear(0f, 0f, 1f, 1f);
+
+    #pragma warning restore 0414
+
+    [Header("Low Authority: Fragment Dissolve")]
+    [SerializeField, Min(0.1f)] private float lowDissolveDuration = 3.5f;
+    [SerializeField, Range(3, 12)] private int lowDissolveGrid = 7;
+    [SerializeField, Range(0f, 1f)] private float lowParticleDensity = 0.22f;
+    [SerializeField, Min(0.1f)] private float lowDissolveParticleLifetime = 2f;
+    [SerializeField, Min(0f)] private float lowDissolveParticleSpeed = 0.12f;
+
+    private sealed class DissolveMesh
+    {
+        public GameObject gameObject;
+        public Mesh mesh;
+        public Vector3[] vertices;
+        public Color32[] colors;
+        public Color32[] baseColors;
+        public float[] thresholds;
+        public bool[] emitted;
+        public bool[] particleAllowed;
+    }
+    private readonly List<DissolveMesh> lowDissolveMeshes = new List<DissolveMesh>();
 
     private struct CharacterMotion
     {
@@ -415,58 +438,180 @@ public class AuthorityVisualController : MonoBehaviour
         float orbitDegrees = 360f * lowOrbitTurns;
         Vector3 finalRadialOffset = Quaternion.AngleAxis(orbitDegrees, axis) * orbitRadiusOffset;
         Vector3 orbitEndPosition = center + axis * axialOffset + finalRadialOffset;
-        Vector3 radialDirection = finalRadialOffset.normalized;
-        Vector3 tangentDirection = Vector3.Cross(axis, radialDirection).normalized;
-        Vector3 driftDirection = (radialDirection * 0.65f + tangentDirection * 0.55f + axis * lowDriftUpwardBias).normalized;
-        if (driftDirection.sqrMagnitude < 0.001f)
-            driftDirection = radialDirection;
-
-        Vector3 driftEndPosition = orbitEndPosition + driftDirection * lowDriftDistance;
         Quaternion orbitEndRotation = rotateTextWithOrbit
             ? Quaternion.AngleAxis(orbitDegrees, axis) * startRotation
             : startRotation;
 
-        float totalDuration = lowOrbitDuration + lowDriftDuration;
+        float totalDuration = lowOrbitDuration;
         float elapsed = 0f;
         while (elapsed < totalDuration)
         {
             elapsed += Time.deltaTime;
 
-            if (elapsed < lowOrbitDuration)
-            {
-                float t = Mathf.Clamp01(elapsed / lowOrbitDuration);
-                float eased = lowOrbitCurve != null ? Mathf.Clamp01(lowOrbitCurve.Evaluate(t)) : t;
-                float angle = orbitDegrees * eased;
-                Vector3 rotatedOffset = Quaternion.AngleAxis(angle, axis) * orbitRadiusOffset;
-                messageText.transform.position = center + axis * axialOffset + rotatedOffset;
-                messageText.transform.rotation = rotateTextWithOrbit
-                    ? Quaternion.AngleAxis(angle, axis) * startRotation
-                    : startRotation;
-            }
-            else
-            {
-                float t = Mathf.Clamp01((elapsed - lowOrbitDuration) / lowDriftDuration);
-                float eased = lowDriftCurve != null ? Mathf.Clamp01(lowDriftCurve.Evaluate(t)) : t;
-                messageText.transform.position = Vector3.Lerp(orbitEndPosition, driftEndPosition, eased);
-                messageText.transform.rotation = orbitEndRotation * Quaternion.AngleAxis(lowDriftTwist * eased, Vector3.forward);
-
-                float fade = lowFadeCurve != null ? Mathf.Clamp01(lowFadeCurve.Evaluate(t)) : t;
-                Color color = initialTextColor;
-                color.a = initialTextColor.a * (1f - fade);
-                messageText.color = color;
-            }
+            float t = Mathf.Clamp01(elapsed / lowOrbitDuration);
+            float eased = lowOrbitCurve != null ? Mathf.Clamp01(lowOrbitCurve.Evaluate(t)) : t;
+            float angle = orbitDegrees * eased;
+            Vector3 rotatedOffset = Quaternion.AngleAxis(angle, axis) * orbitRadiusOffset;
+            messageText.transform.position = center + axis * axialOffset + rotatedOffset;
+            messageText.transform.rotation = rotateTextWithOrbit
+                ? Quaternion.AngleAxis(angle, axis) * startRotation
+                : startRotation;
 
             yield return null;
         }
 
-        messageText.transform.position = driftEndPosition;
-        messageText.transform.rotation = orbitEndRotation * Quaternion.AngleAxis(lowDriftTwist, Vector3.forward);
-        Color invisible = initialTextColor;
-        invisible.a = 0f;
-        messageText.color = invisible;
+        messageText.transform.position = orbitEndPosition;
+        messageText.transform.rotation = orbitEndRotation;
+        yield return PlayLowFragmentDissolve();
         if (resetAfterSequenceDelay > 0f)
             yield return new WaitForSeconds(resetAfterSequenceDelay);
         CompleteSequenceAndRestore();
+    }
+
+    private IEnumerator PlayLowFragmentDissolve()
+    {
+        StopAnimatorForMeshControl();
+        if (!speechCloudActive) messageText.ForceMeshUpdate(true);
+        CaptureOriginalMesh();
+        PrepareParticleSystem();
+        BuildLowDissolveMeshes();
+        // Hide the intact glyphs; the subdivided copies retain the same SDF font materials.
+        foreach (TMP_MeshInfo meshInfo in messageText.textInfo.meshInfo)
+            for (int i = 0; i < meshInfo.colors32.Length; i++)
+                meshInfo.colors32[i].a = 0;
+        messageText.UpdateVertexData(TMP_VertexDataUpdateFlags.Colors32);
+
+        float duration = Mathf.Max(0.1f, lowDissolveDuration);
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            UpdateLowDissolve(Mathf.Clamp01(elapsed / duration));
+            yield return null;
+        }
+        UpdateLowDissolve(1f);
+        yield return new WaitForSeconds(Mathf.Max(0.1f, lowDissolveParticleLifetime));
+        ClearLowDissolveMeshes();
+    }
+
+    private void BuildLowDissolveMeshes()
+    {
+        ClearLowDissolveMeshes();
+        TMP_TextInfo info = messageText.textInfo;
+        int grid = Mathf.Clamp(lowDissolveGrid, 3, 12);
+        var random = new System.Random(randomSeed);
+        for (int material = 0; material < info.meshInfo.Length; material++)
+        {
+            var vertices = new List<Vector3>();
+            var uv = new List<Vector2>();
+            var uv2 = new List<Vector2>();
+            var colors = new List<Color32>();
+            var triangles = new List<int>();
+            var thresholds = new List<float>();
+            var particleAllowed = new List<bool>();
+            TMP_MeshInfo source = info.meshInfo[material];
+            Texture2D atlas = source.material != null ? source.material.mainTexture as Texture2D : null;
+            for (int c = 0; c < info.characterCount; c++)
+            {
+                TMP_CharacterInfo character = info.characterInfo[c];
+                if (!character.isVisible || character.materialReferenceIndex != material) continue;
+                int v = character.vertexIndex;
+                for (int y = 0; y < grid; y++)
+                for (int x = 0; x < grid; x++)
+                {
+                    int first = vertices.Count;
+                    for (int corner = 0; corner < 4; corner++)
+                    {
+                        float u = (x + (corner >= 2 ? 1f : 0f)) / grid;
+                        float t = (y + (corner == 1 || corner == 2 ? 1f : 0f)) / grid;
+                        vertices.Add(Vector3.Lerp(Vector3.Lerp(source.vertices[v], source.vertices[v + 3], u),
+                            Vector3.Lerp(source.vertices[v + 1], source.vertices[v + 2], u), t));
+                        uv.Add(Vector2.Lerp(Vector2.Lerp(source.uvs0[v], source.uvs0[v + 3], u),
+                            Vector2.Lerp(source.uvs0[v + 1], source.uvs0[v + 2], u), t));
+                        // Preserve SDF scale and packed mapping, rather than interpolating packed UV2 values.
+                        uv2.Add(source.uvs2[v + corner]);
+                        colors.Add(source.colors32[v + corner]);
+                    }
+                    triangles.AddRange(new[] { first, first + 1, first + 2, first + 2, first + 3, first });
+                    thresholds.Add(0.08f + (float)random.NextDouble() * 0.82f);
+                    Vector2 sampleUV = (uv[first] + uv[first + 2]) * 0.5f;
+                    // Readable SDF atlases let us avoid emitting dust from the empty glyph padding.
+                    particleAllowed.Add(atlas == null || !atlas.isReadable || atlas.GetPixelBilinear(sampleUV.x, sampleUV.y).a >= 0.45f);
+                }
+            }
+            if (vertices.Count == 0) continue;
+            var obj = new GameObject("Low Text Dissolve Fragments");
+            obj.layer = messageText.gameObject.layer;
+            obj.transform.SetParent(messageText.transform, false);
+            Mesh mesh = new Mesh { name = "Runtime Low Text Fragments" };
+            mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+            mesh.SetVertices(vertices);
+            mesh.SetUVs(0, uv);
+            mesh.SetUVs(1, uv2);
+            mesh.SetColors(colors);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            obj.AddComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = obj.AddComponent<MeshRenderer>();
+            renderer.sharedMaterial = source.material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            Renderer textRenderer = messageText.GetComponent<Renderer>();
+            if (textRenderer != null)
+            {
+                renderer.sortingLayerID = textRenderer.sortingLayerID;
+                renderer.sortingOrder = textRenderer.sortingOrder;
+            }
+            lowDissolveMeshes.Add(new DissolveMesh
+            {
+                gameObject = obj, mesh = mesh, vertices = vertices.ToArray(), colors = colors.ToArray(),
+                baseColors = colors.ToArray(), thresholds = thresholds.ToArray(), emitted = new bool[thresholds.Count], particleAllowed = particleAllowed.ToArray()
+            });
+        }
+    }
+
+    private void UpdateLowDissolve(float progress)
+    {
+        for (int m = 0; m < lowDissolveMeshes.Count; m++)
+        {
+            DissolveMesh fragment = lowDissolveMeshes[m];
+            for (int cell = 0; cell < fragment.thresholds.Length; cell++)
+            {
+                float erosion = Mathf.Clamp01((progress - fragment.thresholds[cell]) / 0.1f);
+                int v = cell * 4;
+                for (int corner = 0; corner < 4; corner++)
+                {
+                    Color32 color = fragment.baseColors[v + corner];
+                    color.a = (byte)Mathf.RoundToInt(color.a * (1f - erosion));
+                    fragment.colors[v + corner] = color;
+                }
+                if (erosion <= 0f || fragment.emitted[cell]) continue;
+                fragment.emitted[cell] = true;
+                var random = new System.Random(randomSeed ^ (m * 104729) ^ (cell * 7919));
+                if (!fragment.particleAllowed[cell] || random.NextDouble() > lowParticleDensity) continue;
+                Vector3 center = (fragment.vertices[v] + fragment.vertices[v + 2]) * 0.5f;
+                dissolveParticles.Emit(new ParticleSystem.EmitParams
+                {
+                    position = fragment.gameObject.transform.TransformPoint(center),
+                    velocity = (RandomInsideUnitSphere(random) + Vector3.up * 0.5f) * lowDissolveParticleSpeed,
+                    startColor = fragment.baseColors[v],
+                    startSize = particleSize * RandomRange(random, 0.4f, 0.85f),
+                    startLifetime = Mathf.Max(0.1f, lowDissolveParticleLifetime)
+                }, 1);
+            }
+            fragment.mesh.colors32 = fragment.colors;
+        }
+    }
+
+    private void ClearLowDissolveMeshes()
+    {
+        foreach (DissolveMesh fragment in lowDissolveMeshes)
+        {
+            if (fragment.gameObject != null) Destroy(fragment.gameObject);
+            if (fragment.mesh != null) Destroy(fragment.mesh);
+        }
+        lowDissolveMeshes.Clear();
     }
 
     private void CompleteSequenceAndRestore()
@@ -788,6 +933,7 @@ public class AuthorityVisualController : MonoBehaviour
 
     private void RestoreVisualState()
     {
+        ClearLowDissolveMeshes();
         bool clearSpeech = speechCloudActive;
         speechCloudActive = false;
         speechCloudFrozen = false;
@@ -863,6 +1009,7 @@ public class AuthorityVisualController : MonoBehaviour
 
     private void OnDestroy()
     {
+        ClearLowDissolveMeshes();
         if (runtimePrimaryFont != null) Destroy(runtimePrimaryFont);
         if (runtimeSpeechFont != null)
         {
