@@ -57,6 +57,8 @@ OpenSMILE + AuthorityVoiceClassifier ──> High / Low ──> ParticleFaceCont
 
 `Assets/Scripts/ParticleFacePrototype.cs` 已直接挂在 `Authoritycontroller` 上，并订阅其 `HighStarted`、`LowStarted` 和 `SequenceCancelled` 事件。`MediaPipeParticleFaceBridge` 会在 Play 时请求摄像头权限，以 `Tools/FaceFusion/.venv/bin/python` 启动已有的本地 MediaPipe Face Landmarker，并每秒处理约 8 帧。按 H 会形成最近识别到的真人粒子脸，按 L 会触发 Low 扰动，按 I 会返回 Idle。场景保存的粒子中心为 `(0, 2.12, 0)`，与 Test 3 的现有摄像机构图对齐。运行时才创建粒子对象，避免把数千个粒子状态写入场景文件。
 
+`MediaPipeParticleFaceBridge` 的 **Face Scale** 在 Test 3 默认设为 `4`，因此只将 MediaPipe 驱动的 High 人脸放大 4 倍；Idle 云团、Low 扰动和文字动画不随之缩放。可在 `Authoritycontroller` 的该组件 Inspector 中继续调整，范围为 0.25–8。
+
 Test 3 中旧的 `CumulativeFaceFusion` 已关闭，因此不应再出现 `TEST 2 | Cumulative geometry prototype` 的模拟观众面板；Test 2 场景本身未改变。
 
 ## 可运行的第 1 阶段原型：数学脸 + 三态粒子

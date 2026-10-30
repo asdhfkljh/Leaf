@@ -25,6 +25,8 @@ public sealed class MediaPipeParticleFaceBridge : MonoBehaviour
     [SerializeField, Range(0.1f, 3f)] private float faceWidth = 1.28f;
     [SerializeField, Range(0.1f, 3f)] private float faceHeight = 1.70f;
     [SerializeField, Range(0.05f, 2f)] private float faceDepth = 1.15f;
+    [Tooltip("Uniform scale applied to the detected face only; the Idle cloud is unchanged.")]
+    [SerializeField, Range(0.25f, 8f)] private float faceScale = 4f;
     [SerializeField, Range(0f, 0.05f)] private float particleSpread = 0.010f;
 
     private readonly ConcurrentQueue<string> messages = new ConcurrentQueue<string>();
@@ -160,7 +162,7 @@ public sealed class MediaPipeParticleFaceBridge : MonoBehaviour
             float y = (.5f - landmarks[offset + 1]) * faceHeight;
             float z = -landmarks[offset + 2] * faceDepth;
             Vector3 spread = DeterministicSpread(i) * particleSpread;
-            positions[i] = new Vector3(x, y, z) + spread;
+            positions[i] = new Vector3(x, y, z) * faceScale + spread;
             colours[i] = new Color(rgb[offset], rgb[offset + 1], rgb[offset + 2], .96f);
         }
         return true;

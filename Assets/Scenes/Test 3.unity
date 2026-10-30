@@ -595,6 +595,7 @@ MonoBehaviour:
   faceWidth: 1.28
   faceHeight: 1.7
   faceDepth: 1.15
+  faceScale: 4
   particleSpread: 0.01
 --- !u!4 &990967481
 Transform:
