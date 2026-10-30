@@ -6,7 +6,7 @@
 
 目标不是继续替换实体 FBX 人头，而是让摄像头中的一张人脸在声音输入达到 **High** 时，化为带摄像头 RGB 颜色的三维粒子脸；没有输入或只有 **Low** 输入时，则保持为抽象粒子云。
 
-截至本文档创建时，Test 3 已有 `Authoritycontroller`、`AuthorityVisualController`、录音和 High/Low 声音分类组件；它**尚未**包含 `ParticleFaceSystem`、摄像头采集、MediaPipe 或粒子人脸脚本。下文的代码是可单独验证粒子状态机的原型，不代表 MediaPipe 已安装或真人人脸重建已经完成。
+Test 3 已有 `Authoritycontroller`、`AuthorityVisualController`、录音和 High/Low 声音分类组件。现已接入 `ParticleFacePrototype`：它在运行时创建 `ParticleFaceSystem`，以蓝色呼吸云团作为 Idle，High 时形成带五官起伏的程序化 3D 点云脸，Low 时短暂扰动后回聚。当前仍**未**接入摄像头采集、MediaPipe 或真人 RGB 采样；High 的暖色脸是视觉占位，而不是真人脸重建。
 
 ## 从「替换模型」到「粒子人脸」
 
@@ -52,6 +52,10 @@ OpenSMILE + AuthorityVoiceClassifier ──> High / Low ──> ParticleFaceCont
 6. 首先以脚本 Inspector 的 `state` 和键盘测试验证 Idle/Low/High；确认视觉、构图和性能后才引入摄像头与 MediaPipe。
 
 现有 `AuthorityVisualController` 的 High/Low 键默认为 H/L，High 阈值为 70。粒子控制器可以订阅同一事件，也可以由一个适配器统一转发；避免两个组件互相直接依赖私有实现。
+
+### 当前 Test 3 实现（已接入）
+
+`Assets/Scripts/ParticleFacePrototype.cs` 已直接挂在 `Authoritycontroller` 上，并订阅其 `HighStarted`、`LowStarted` 和 `SequenceCancelled` 事件。因此无需在 Inspector 手动拖拽引用：按 H 会形成程序化粒子脸，按 L 会触发 Low 扰动，按 I 会返回 Idle。场景保存的粒子中心为 `(0, 2.12, 0)`，与 Test 3 的现有摄像机构图对齐。运行时才创建粒子对象，避免把数千个粒子状态写入场景文件。
 
 ## 可运行的第 1 阶段原型：数学脸 + 三态粒子
 
