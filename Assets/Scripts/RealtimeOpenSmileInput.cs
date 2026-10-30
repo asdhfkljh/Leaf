@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using Process = System.Diagnostics.Process;
 using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 using DataReceivedEventArgs = System.Diagnostics.DataReceivedEventArgs;
@@ -33,6 +34,10 @@ public class RealtimeOpenSmileInput : MonoBehaviour
     [SerializeField] private bool enableKeyboardToggle = true;
     [SerializeField] private KeyCode toggleRecordingKey = KeyCode.Alpha1;
 
+    [Header("Low-state playback")]
+    [Tooltip("Replays the most recently completed microphone recording when the voice result enters Low.")]
+    [SerializeField, Range(0f, 1f)] private float lowPlaybackVolume = 1f;
+
     [Header("Output")]
     [SerializeField] private bool logFeatureJson = true;
     [SerializeField] private OpenSmileStringEvent onFeaturesJsonReceived = new OpenSmileStringEvent();
@@ -52,6 +57,9 @@ public class RealtimeOpenSmileInput : MonoBehaviour
     private bool awaitingAnalysis;
     private float recordingStartedAt;
     private AuthorityVisualController visualController;
+    private AudioSource playbackSource;
+    private AudioClip lastRecordingClip;
+    private readonly List<float> capturedMonoSamples = new List<float>();
 
     public string LatestFeaturesJson { get; private set; }
     public string LatestTranscript { get; private set; }
@@ -94,6 +102,17 @@ public class RealtimeOpenSmileInput : MonoBehaviour
     private void Awake()
     {
         visualController = GetComponent<AuthorityVisualController>();
+        playbackSource = GetComponent<AudioSource>();
+        if (playbackSource == null)
+            playbackSource = gameObject.AddComponent<AudioSource>();
+
+        playbackSource.playOnAwake = false;
+        playbackSource.loop = false;
+        playbackSource.spatialBlend = 0f;
+        playbackSource.volume = lowPlaybackVolume;
+
+        if (visualController != null)
+            visualController.LowStarted += PlayLastRecording;
     }
 
     private void Start()
@@ -186,6 +205,7 @@ public class RealtimeOpenSmileInput : MonoBehaviour
         readPosition = Mathf.Max(0, Microphone.GetPosition(activeDevice));
         recordingStartedAt = Time.realtimeSinceStartup;
         capturing = true;
+        capturedMonoSamples.Clear();
         LatestTranscript = "";
         if (visualController != null)
             visualController.SetSpeechText("");
@@ -206,6 +226,7 @@ public class RealtimeOpenSmileInput : MonoBehaviour
             return;
 
         PumpMicrophoneAudio(true);
+        SaveLastRecording();
         capturing = false;
         EndMicrophone();
 
@@ -344,6 +365,7 @@ public class RealtimeOpenSmileInput : MonoBehaviour
             if (mono == null)
                 break;
 
+            capturedMonoSamples.AddRange(mono);
             SendAudioChunk(mono, microphoneClip.frequency);
             readPosition = (readPosition + framesToRead) % microphoneClip.samples;
             availableFrames -= framesToRead;
@@ -512,6 +534,36 @@ public class RealtimeOpenSmileInput : MonoBehaviour
         microphoneClip = null;
     }
 
+    private void SaveLastRecording()
+    {
+        if (microphoneClip == null || capturedMonoSamples.Count == 0)
+            return;
+
+        AudioClip completedRecording = AudioClip.Create(
+            "Last Voice Recording",
+            capturedMonoSamples.Count,
+            1,
+            microphoneClip.frequency,
+            false);
+        completedRecording.SetData(capturedMonoSamples.ToArray(), 0);
+
+        if (lastRecordingClip != null)
+            Destroy(lastRecordingClip);
+        lastRecordingClip = completedRecording;
+    }
+
+    /// <summary>Replays the most recently completed microphone recording, if one is available.</summary>
+    public void PlayLastRecording()
+    {
+        if (lastRecordingClip == null || playbackSource == null)
+            return;
+
+        playbackSource.Stop();
+        playbackSource.clip = lastRecordingClip;
+        playbackSource.volume = lowPlaybackVolume;
+        playbackSource.Play();
+    }
+
     private void StopWorker()
     {
         workerReady = false;
@@ -545,6 +597,14 @@ public class RealtimeOpenSmileInput : MonoBehaviour
         awaitingAnalysis = false;
         EndMicrophone();
         StopWorker();
+    }
+
+    private void OnDestroy()
+    {
+        if (visualController != null)
+            visualController.LowStarted -= PlayLastRecording;
+        if (lastRecordingClip != null)
+            Destroy(lastRecordingClip);
     }
 
     private void OnApplicationQuit()
