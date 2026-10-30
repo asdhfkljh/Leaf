@@ -14,7 +14,10 @@ using UnityEngine.Serialization;
 public class AuthorityVisualController : MonoBehaviour
 {
     [Header("Scene References")]
+    [Tooltip("First ear target. High characters alternate between this and Other Ear Anchor.")]
     [SerializeField] private Transform earAnchor;
+    [Tooltip("Second ear target for High. If empty, the first target is used for compatibility.")]
+    [SerializeField] private Transform otherEarAnchor;
     [SerializeField] private TMP_Text messageText;
     [Tooltip("Dynamic fallback for recognized Chinese/Japanese/Korean text.")]
     [SerializeField] private Font speechFallbackFont;
@@ -821,7 +824,9 @@ public class AuthorityVisualController : MonoBehaviour
             Vector3 startWorld = textTransform.TransformPoint(centerLocal);
 
             System.Random random = new System.Random(randomSeed + i * 7919);
-            Vector3 anchorBase = earAnchor.TransformPoint(anchorLocalOffset);
+            // Alternate visible glyphs so both ears receive an even share of the text.
+            Transform targetEar = otherEarAnchor != null && visibleIndex % 2 == 1 ? otherEarAnchor : earAnchor;
+            Vector3 anchorBase = targetEar.TransformPoint(anchorLocalOffset);
             Vector3 anchorJitter = RandomInsideUnitSphere(random) * anchorScatterRadius;
             Vector3 targetWorld = anchorBase + anchorJitter;
 
