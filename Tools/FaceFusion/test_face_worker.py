@@ -82,4 +82,33 @@ class WorkerTests(unittest.TestCase):
         self.assertEqual(replies[2],{'type':'face','id':9,'valid':False})
 
 
+
+class PortraitTests(unittest.TestCase):
+    def setUp(self):
+        from face_worker import portrait
+        self.portrait = portrait
+        self.points = [SimpleNamespace(x=.5,y=.5) for _ in range(478)]
+        indices = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109]
+        for i,index in enumerate(indices):
+            angle = 2*np.pi*i/len(indices)
+            self.points[index] = SimpleNamespace(x=.5+.22*np.sin(angle),y=.5-.36*np.cos(angle))
+        self.points[33] = SimpleNamespace(x=.35,y=.38)
+        self.points[263] = SimpleNamespace(x=.65,y=.38)
+        self.frame = np.full((480,640,3), 120, np.uint8)
+
+    def test_mask_and_talking(self):
+        self.points[13].y=.6; self.points[14].y=.75
+        image = self.portrait(self.points,self.frame,np,cv2)
+        decoded = cv2.imdecode(np.frombuffer(base64.b64decode(image),np.uint8),cv2.IMREAD_UNCHANGED)
+        self.assertEqual(decoded.shape,(512,384,4))
+        self.assertEqual(int(decoded[0,0,3]),0)
+        self.assertEqual(int(decoded[256,192,3]),255)
+        self.assertTrue(np.any((decoded[:,:,3]>0)&(decoded[:,:,3]<255)))
+
+    def test_clipped_or_invalid_rejected(self):
+        self.points[10].y=-.1
+        self.assertIsNone(self.portrait(self.points,self.frame,np,cv2))
+        self.points[10].y=float('nan')
+        self.assertIsNone(self.portrait(self.points,self.frame,np,cv2))
+
 if __name__=='__main__': unittest.main()

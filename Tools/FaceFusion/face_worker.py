@@ -1,4 +1,4 @@
-"""Local face proportions for authored Unity BlendShapes. Never returns camera textures."""
+"""Local face proportions for authored Unity BlendShapes. Returns a masked face portrait in memory for High reveals."""
 import base64
 import json
 import sys
@@ -44,6 +44,31 @@ def measure(landmarks, width, height, np):
     return {'eye_spacing_ratio': eye_ratio, 'mouth_width_ratio': mouth_ratio}
 
 
+def portrait(landmarks, frame, np, cv2):
+    """Return an upright, contour-masked PNG; reject clipped/small or strongly turned faces."""
+    h, w = frame.shape[:2]
+    p = np.array([(v.x*w, v.y*h) for v in landmarks])
+    if p.shape != (478, 2) or not np.isfinite(p).all(): return None
+    indices = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109]
+    contour = p[indices]
+    lo, hi = contour.min(axis=0), contour.max(axis=0)
+    span = np.linalg.norm(p[33]-p[263])
+    if hi[0]-lo[0] < 100 or span < 50: return None
+    if np.any(lo < [2,2]) or np.any(hi >= [w-2,h-2]): return None
+    if abs(p[33,1]-p[263,1]) > span*.18: return None
+    if abs(p[1,0]-(p[33,0]+p[263,0])/2) > span*.22: return None
+    x0,y0 = np.floor(lo).astype(int); x1,y1 = np.ceil(hi).astype(int)
+    crop = frame[y0:y1+1,x0:x1+1]
+    mask = np.zeros(crop.shape[:2], np.uint8)
+    cv2.fillPoly(mask, [np.round(contour-[x0,y0]).astype(np.int32)], 255)
+    # Inward feather keeps background outside the contour fully transparent.
+    alpha = np.clip(cv2.distanceTransform(mask, cv2.DIST_L2, 3)/max(3,(x1-x0)*.045),0,1)
+    rgba = cv2.cvtColor(crop, cv2.COLOR_BGR2BGRA); rgba[:,:,3] = (alpha*255).astype(np.uint8)
+    rgba = cv2.resize(rgba, (384,512), interpolation=cv2.INTER_AREA)
+    ok, encoded = cv2.imencode('.png', rgba)
+    return base64.b64encode(encoded).decode() if ok else None
+
+
 def main():
     import cv2
     import mediapipe as mp
@@ -70,6 +95,9 @@ def main():
                 reply = {'type': 'face', 'id': packet['id'], 'valid': ratios is not None}
                 if ratios:
                     reply.update(ratios)
+                if result.face_landmarks:
+                    image = portrait(result.face_landmarks[0], frame, np, cv2)
+                    if image: reply['portrait'] = image
                 print(json.dumps(reply), flush=True)
             except Exception as exc:
                 print(json.dumps({'type': 'error', 'message': str(exc)}), flush=True)
