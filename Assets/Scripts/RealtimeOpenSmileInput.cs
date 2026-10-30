@@ -26,7 +26,8 @@ public class RealtimeOpenSmileInput : MonoBehaviour
 
     [Header("Microphone")]
     [SerializeField] private string microphoneDevice = "";
-    [SerializeField] private int targetSampleRate = 16000;
+    [Tooltip("Requested microphone sample rate. Set to 0 to match Unity's output sample rate, which avoids device resampling during replay.")]
+    [SerializeField] private int targetSampleRate = 0;
     [SerializeField] private int recordingLengthSeconds = 10;
     [SerializeField] private int chunkMilliseconds = 100;
     [SerializeField, Min(5)] private int maximumRecordingSeconds = 180;
@@ -59,7 +60,9 @@ public class RealtimeOpenSmileInput : MonoBehaviour
     private AuthorityVisualController visualController;
     private AudioSource playbackSource;
     private AudioClip lastRecordingClip;
-    private readonly List<float> capturedMonoSamples = new List<float>();
+    private readonly List<float> capturedInterleavedSamples = new List<float>();
+    private int capturedChannels;
+    private int capturedSampleRate;
 
     public string LatestFeaturesJson { get; private set; }
     public string LatestTranscript { get; private set; }
@@ -173,7 +176,7 @@ public class RealtimeOpenSmileInput : MonoBehaviour
         int minFrequency;
         int maxFrequency;
         Microphone.GetDeviceCaps(activeDevice, out minFrequency, out maxFrequency);
-        int requestedFrequency = targetSampleRate;
+        int requestedFrequency = targetSampleRate > 0 ? targetSampleRate : AudioSettings.outputSampleRate;
         if (minFrequency > 0 && requestedFrequency < minFrequency)
             requestedFrequency = minFrequency;
         if (maxFrequency > 0 && requestedFrequency > maxFrequency)
@@ -205,7 +208,9 @@ public class RealtimeOpenSmileInput : MonoBehaviour
         readPosition = Mathf.Max(0, Microphone.GetPosition(activeDevice));
         recordingStartedAt = Time.realtimeSinceStartup;
         capturing = true;
-        capturedMonoSamples.Clear();
+        capturedInterleavedSamples.Clear();
+        capturedChannels = Mathf.Max(1, microphoneClip.channels);
+        capturedSampleRate = microphoneClip.frequency;
         LatestTranscript = "";
         if (visualController != null)
             visualController.SetSpeechText("");
@@ -361,18 +366,19 @@ public class RealtimeOpenSmileInput : MonoBehaviour
         while (availableFrames >= chunkFrames || (flushPartialChunk && availableFrames > 0))
         {
             int framesToRead = Mathf.Min(chunkFrames, availableFrames);
-            float[] mono = ReadMonoFrames(readPosition, framesToRead);
-            if (mono == null)
+            float[] interleaved = ReadInterleavedFrames(readPosition, framesToRead);
+            if (interleaved == null)
                 break;
 
-            capturedMonoSamples.AddRange(mono);
+            float[] mono = DownmixToMono(interleaved, microphoneClip.channels);
+            capturedInterleavedSamples.AddRange(interleaved);
             SendAudioChunk(mono, microphoneClip.frequency);
             readPosition = (readPosition + framesToRead) % microphoneClip.samples;
             availableFrames -= framesToRead;
         }
     }
 
-    private float[] ReadMonoFrames(int startFrame, int frameCount)
+    private float[] ReadInterleavedFrames(int startFrame, int frameCount)
     {
         int channels = Mathf.Max(1, microphoneClip.channels);
         int firstFrames = Mathf.Min(frameCount, microphoneClip.samples - startFrame);
@@ -392,14 +398,20 @@ public class RealtimeOpenSmileInput : MonoBehaviour
             Array.Copy(second, 0, interleaved, first.Length, second.Length);
         }
 
-        float[] mono = new float[frameCount];
-        for (int frame = 0; frame < frameCount; frame++)
+        return interleaved;
+    }
+
+    private static float[] DownmixToMono(float[] interleaved, int channels)
+    {
+        int safeChannels = Mathf.Max(1, channels);
+        float[] mono = new float[interleaved.Length / safeChannels];
+        for (int frame = 0; frame < mono.Length; frame++)
         {
             float sum = 0f;
-            int offset = frame * channels;
-            for (int channel = 0; channel < channels; channel++)
+            int offset = frame * safeChannels;
+            for (int channel = 0; channel < safeChannels; channel++)
                 sum += interleaved[offset + channel];
-            mono[frame] = sum / channels;
+            mono[frame] = sum / safeChannels;
         }
 
         return mono;
@@ -536,16 +548,16 @@ public class RealtimeOpenSmileInput : MonoBehaviour
 
     private void SaveLastRecording()
     {
-        if (microphoneClip == null || capturedMonoSamples.Count == 0)
+        if (microphoneClip == null || capturedInterleavedSamples.Count == 0 || capturedChannels == 0 || capturedSampleRate == 0)
             return;
 
         AudioClip completedRecording = AudioClip.Create(
             "Last Voice Recording",
-            capturedMonoSamples.Count,
-            1,
-            microphoneClip.frequency,
+            capturedInterleavedSamples.Count / capturedChannels,
+            capturedChannels,
+            capturedSampleRate,
             false);
-        completedRecording.SetData(capturedMonoSamples.ToArray(), 0);
+        completedRecording.SetData(capturedInterleavedSamples.ToArray(), 0);
 
         if (lastRecordingClip != null)
             Destroy(lastRecordingClip);

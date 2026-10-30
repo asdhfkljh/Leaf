@@ -579,7 +579,7 @@ MonoBehaviour:
   speechLanguage: auto
   transcriptionIntervalSeconds: 2
   microphoneDevice: 
-  targetSampleRate: 16000
+  targetSampleRate: 0
   recordingLengthSeconds: 10
   chunkMilliseconds: 100
   maximumRecordingSeconds: 180
