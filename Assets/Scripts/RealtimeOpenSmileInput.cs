@@ -5,6 +5,7 @@ using Process = System.Diagnostics.Process;
 using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 using DataReceivedEventArgs = System.Diagnostics.DataReceivedEventArgs;
 using System.IO;
+using Adrenak.UniMic;
 using UnityEngine;
 using UnityEngine.Events;
 
@@ -26,9 +27,8 @@ public class RealtimeOpenSmileInput : MonoBehaviour
 
     [Header("Microphone")]
     [SerializeField] private string microphoneDevice = "";
-    [Tooltip("Requested microphone sample rate. Set to 0 to match Unity's output sample rate, which avoids device resampling during replay.")]
+    [Tooltip("Requested microphone sample rate. Set to 0 to let UniMic select the device's native 48 kHz or maximum supported rate.")]
     [SerializeField] private int targetSampleRate = 0;
-    [SerializeField] private int recordingLengthSeconds = 10;
     [SerializeField] private int chunkMilliseconds = 100;
     [SerializeField, Min(5)] private int maximumRecordingSeconds = 180;
     [SerializeField] private bool autoStart = false;
@@ -48,10 +48,8 @@ public class RealtimeOpenSmileInput : MonoBehaviour
     private readonly ConcurrentQueue<string> stderrQueue = new ConcurrentQueue<string>();
 
     private Process worker;
-    private AudioClip microphoneClip;
+    private Mic.Device recordingDevice;
     private string activeDevice;
-    private int readPosition;
-    private int chunkFrames;
     private bool workerReady;
     private bool capturing;
     private bool startRequested;
@@ -157,60 +155,50 @@ public class RealtimeOpenSmileInput : MonoBehaviour
         if (!startRequested || !workerReady || worker == null)
             return;
 
-        string[] devices = Microphone.devices;
-        if (devices == null || devices.Length == 0)
+        List<Mic.Device> devices = Mic.AvailableDevices;
+        if (devices == null || devices.Count == 0)
         {
             Debug.LogError("RealtimeOpenSmileInput: no microphone device is available.", this);
             startRequested = false;
             return;
         }
 
-        activeDevice = string.IsNullOrWhiteSpace(microphoneDevice) ? devices[0] : microphoneDevice;
-        if (Array.IndexOf(devices, activeDevice) < 0)
+        recordingDevice = devices.Find(device =>
+            string.IsNullOrWhiteSpace(microphoneDevice) || device.Name == microphoneDevice);
+        if (recordingDevice == null)
         {
-            Debug.LogError("RealtimeOpenSmileInput: microphone device not found: " + activeDevice, this);
+            Debug.LogError("RealtimeOpenSmileInput: microphone device not found: " + microphoneDevice, this);
             startRequested = false;
             return;
         }
-
-        int minFrequency;
-        int maxFrequency;
-        Microphone.GetDeviceCaps(activeDevice, out minFrequency, out maxFrequency);
-        int requestedFrequency = targetSampleRate > 0 ? targetSampleRate : AudioSettings.outputSampleRate;
-        if (minFrequency > 0 && requestedFrequency < minFrequency)
-            requestedFrequency = minFrequency;
-        if (maxFrequency > 0 && requestedFrequency > maxFrequency)
-            requestedFrequency = maxFrequency;
-
-        microphoneClip = Microphone.Start(
-            activeDevice,
-            true,
-            Mathf.Max(3, recordingLengthSeconds),
-            requestedFrequency);
-
-        if (microphoneClip == null)
-        {
-            Debug.LogError("RealtimeOpenSmileInput: Unity could not start microphone capture.", this);
-            startRequested = false;
-            return;
-        }
+        activeDevice = recordingDevice.Name;
 
         if (!SendWorkerControl("start"))
         {
-            Microphone.End(activeDevice);
-            microphoneClip = null;
             startRequested = false;
             return;
         }
 
         startRequested = false;
-        chunkFrames = Mathf.Max(1, microphoneClip.frequency * Mathf.Max(20, chunkMilliseconds) / 1000);
-        readPosition = Mathf.Max(0, Microphone.GetPosition(activeDevice));
+        recordingDevice.OnFrameCollected += OnMicrophoneFrameCollected;
+        if (targetSampleRate > 0)
+            recordingDevice.StartRecording(targetSampleRate, Mathf.Max(20, chunkMilliseconds));
+        else
+            recordingDevice.StartRecording(Mathf.Max(20, chunkMilliseconds));
+
+        if (!recordingDevice.IsRecording)
+        {
+            recordingDevice.OnFrameCollected -= OnMicrophoneFrameCollected;
+            Debug.LogError("RealtimeOpenSmileInput: UniMic could not start microphone capture.", this);
+            startRequested = false;
+            return;
+        }
+
         recordingStartedAt = Time.realtimeSinceStartup;
         capturing = true;
         capturedInterleavedSamples.Clear();
-        capturedChannels = Mathf.Max(1, microphoneClip.channels);
-        capturedSampleRate = microphoneClip.frequency;
+        capturedChannels = 0;
+        capturedSampleRate = 0;
         LatestTranscript = "";
         if (visualController != null)
             visualController.SetSpeechText("");
@@ -230,7 +218,6 @@ public class RealtimeOpenSmileInput : MonoBehaviour
         if (!capturing)
             return;
 
-        PumpMicrophoneAudio(true);
         SaveLastRecording();
         capturing = false;
         EndMicrophone();
@@ -316,7 +303,6 @@ public class RealtimeOpenSmileInput : MonoBehaviour
 
         if (capturing)
         {
-            PumpMicrophoneAudio();
             if (Time.realtimeSinceStartup - recordingStartedAt >= maximumRecordingSeconds)
             {
                 Debug.LogWarning("RealtimeOpenSmileInput: maximum recording duration reached; analyzing now.", this);
@@ -344,61 +330,24 @@ public class RealtimeOpenSmileInput : MonoBehaviour
             StartCapture();
     }
 
-    private void PumpMicrophoneAudio(bool flushPartialChunk = false)
+    private void OnMicrophoneFrameCollected(int sampleRate, int channels, float[] interleaved)
     {
-        if (!capturing || microphoneClip == null || worker == null || worker.HasExited)
+        if (!capturing || interleaved == null || interleaved.Length == 0)
             return;
 
-        int currentPosition = Microphone.GetPosition(activeDevice);
-        if (currentPosition < 0)
-            return;
-
-        int availableFrames = currentPosition >= readPosition
-            ? currentPosition - readPosition
-            : microphoneClip.samples - readPosition + currentPosition;
-
-        if (availableFrames > microphoneClip.samples / 2)
+        if (capturedChannels == 0)
         {
-            readPosition = currentPosition;
+            capturedChannels = Mathf.Max(1, channels);
+            capturedSampleRate = sampleRate;
+        }
+        else if (capturedChannels != channels || capturedSampleRate != sampleRate)
+        {
+            Debug.LogWarning("RealtimeOpenSmileInput: UniMic changed recording format; ignoring the incompatible frame.", this);
             return;
         }
 
-        while (availableFrames >= chunkFrames || (flushPartialChunk && availableFrames > 0))
-        {
-            int framesToRead = Mathf.Min(chunkFrames, availableFrames);
-            float[] interleaved = ReadInterleavedFrames(readPosition, framesToRead);
-            if (interleaved == null)
-                break;
-
-            float[] mono = DownmixToMono(interleaved, microphoneClip.channels);
-            capturedInterleavedSamples.AddRange(interleaved);
-            SendAudioChunk(mono, microphoneClip.frequency);
-            readPosition = (readPosition + framesToRead) % microphoneClip.samples;
-            availableFrames -= framesToRead;
-        }
-    }
-
-    private float[] ReadInterleavedFrames(int startFrame, int frameCount)
-    {
-        int channels = Mathf.Max(1, microphoneClip.channels);
-        int firstFrames = Mathf.Min(frameCount, microphoneClip.samples - startFrame);
-        float[] interleaved = new float[frameCount * channels];
-
-        float[] first = new float[firstFrames * channels];
-        if (!microphoneClip.GetData(first, startFrame))
-            return null;
-        Array.Copy(first, 0, interleaved, 0, first.Length);
-
-        int remainingFrames = frameCount - firstFrames;
-        if (remainingFrames > 0)
-        {
-            float[] second = new float[remainingFrames * channels];
-            if (!microphoneClip.GetData(second, 0))
-                return null;
-            Array.Copy(second, 0, interleaved, first.Length, second.Length);
-        }
-
-        return interleaved;
+        capturedInterleavedSamples.AddRange(interleaved);
+        SendAudioChunk(DownmixToMono(interleaved, channels), sampleRate);
     }
 
     private static float[] DownmixToMono(float[] interleaved, int channels)
@@ -541,14 +490,17 @@ public class RealtimeOpenSmileInput : MonoBehaviour
 
     private void EndMicrophone()
     {
-        if (!string.IsNullOrEmpty(activeDevice) && Microphone.IsRecording(activeDevice))
-            Microphone.End(activeDevice);
-        microphoneClip = null;
+        if (recordingDevice == null)
+            return;
+
+        recordingDevice.OnFrameCollected -= OnMicrophoneFrameCollected;
+        recordingDevice.StopRecording();
+        recordingDevice = null;
     }
 
     private void SaveLastRecording()
     {
-        if (microphoneClip == null || capturedInterleavedSamples.Count == 0 || capturedChannels == 0 || capturedSampleRate == 0)
+        if (capturedInterleavedSamples.Count == 0 || capturedChannels == 0 || capturedSampleRate == 0)
             return;
 
         AudioClip completedRecording = AudioClip.Create(

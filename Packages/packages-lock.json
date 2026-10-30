@@ -1,5 +1,12 @@
 {
   "dependencies": {
+    "com.adrenak.unimic": {
+      "version": "https://github.com/adrenak/unimic.git?path=/Assets/UniMic#0ab294afba538f929525f63d56e2885d4ae78c6c",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "0ab294afba538f929525f63d56e2885d4ae78c6c"
+    },
     "com.luca3317.tmpeffects": {
       "version": "https://github.com/Luca3317/TMPEffects.git?path=/Package",
       "depth": 0,

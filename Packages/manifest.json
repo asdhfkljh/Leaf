@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.adrenak.unimic": "https://github.com/adrenak/unimic.git?path=/Assets/UniMic#0ab294afba538f929525f63d56e2885d4ae78c6c",
     "com.luca3317.tmpeffects": "https://github.com/Luca3317/TMPEffects.git?path=/Package",
     "com.unity.collab-proxy": "2.12.4",
     "com.unity.feature.development": "1.0.1",
