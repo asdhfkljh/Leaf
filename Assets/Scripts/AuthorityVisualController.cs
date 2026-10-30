@@ -46,7 +46,7 @@ public class AuthorityVisualController : MonoBehaviour
 
     [Header("Sequence Timing")]
     [Tooltip("Let the current TMPEffects animation play this long before taking over the character mesh.")]
-    [SerializeField, Min(0f)] private float scatterHoldDuration = 1.5f;
+    [HideInInspector, SerializeField, Min(0f)] private float scatterHoldDuration = 1.5f;
     [Tooltip("Pause after the visual finishes, then restore the text so the next recording can play.")]
     [SerializeField, Min(0f)] private float resetAfterSequenceDelay = 0.8f;
     [Tooltip("Travel time for each character. Characters begin one after another using Character Stagger.")]
@@ -82,7 +82,7 @@ public class AuthorityVisualController : MonoBehaviour
     [SerializeField] private float particleUpwardBias = 0.08f;
     [SerializeField, ColorUsage(true, true)] private Color particleColor = Color.white;
 
-    [Header("Low Authority: Orbit")]
+    [Header("Shared Head Orbit: High and Low")]
     [Tooltip("Head pivot for the orbit. If empty, the Ear Anchor's parent is used.")]
     [SerializeField] private Transform headOrbitCenter;
     [Tooltip("Orbit axis in the Head object's local coordinates.")]
@@ -367,7 +367,7 @@ public class AuthorityVisualController : MonoBehaviour
             return;
         }
 
-        if (mode == AuthorityVisualMode.Low && GetOrbitCenter() == null)
+        if (GetOrbitCenter() == null)
         {
             Debug.LogError("AuthorityVisualController: assign a Head Orbit Center or parent Ear Anchor to the Head.", this);
             return;
@@ -416,13 +416,8 @@ public class AuthorityVisualController : MonoBehaviour
 
     private IEnumerator PlayHighSequenceRoutine()
     {
-        // Keep the TMPEffects-driven scatter visible before this controller takes over the mesh.
-        if (scatterHoldDuration > 0f)
-            yield return new WaitForSeconds(scatterHoldDuration);
-
-        StopAnimatorForMeshControl();
-        if (!speechCloudActive)
-            messageText.ForceMeshUpdate(true);
+        // Share Low's per-character orbit, then build the ear paths from its final pose.
+        yield return PlayHeadOrbitRoutine();
         CaptureOriginalMesh();
         BuildCharacterMotions();
         PrepareParticleSystem();
@@ -453,6 +448,15 @@ public class AuthorityVisualController : MonoBehaviour
     }
 
     private IEnumerator PlayLowSequenceRoutine()
+    {
+        yield return PlayHeadOrbitRoutine();
+        yield return PlayLowFragmentDissolve();
+        if (resetAfterSequenceDelay > 0f)
+            yield return new WaitForSeconds(resetAfterSequenceDelay);
+        CompleteSequenceAndRestore();
+    }
+
+    private IEnumerator PlayHeadOrbitRoutine()
     {
         if (lowStartDelay > 0f)
             yield return new WaitForSeconds(lowStartDelay);
@@ -515,10 +519,6 @@ public class AuthorityVisualController : MonoBehaviour
         }
         lowOrbitBillboarding = false;
         lowOrbitBaseVertices = null;
-        yield return PlayLowFragmentDissolve();
-        if (resetAfterSequenceDelay > 0f)
-            yield return new WaitForSeconds(resetAfterSequenceDelay);
-        CompleteSequenceAndRestore();
     }
 
     private void FaceLowOrbitCharactersToCamera()
