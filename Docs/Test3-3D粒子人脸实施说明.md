@@ -61,8 +61,6 @@ OpenSMILE + AuthorityVoiceClassifier ──> High / Low ──> ParticleFaceCont
 
 `ParticleFacePrototype` 的 Idle 云团默认是一个半径 `0.68` 的松散球壳，而非填满中心的实心球；`Cloud Shell Thickness` 控制壳层厚度，`Cloud Surface Wave Amplitude` 与 `Cloud Surface Wave Speed` 控制持续的缓慢表面起伏。它们只影响 Idle/Low，不改变 High 人脸。
 
-Test 3 的 `ParticleFacePrototype > Face Anchor` 指向原始 `head` Transform，因此粒子系统以模型位置为父级锚点。MediaPipe 每帧还会以双颊中点、额头—下巴中点和鼻尖深度重新居中地标：人向左、右、前、后移动不会拖动整张脸，眨眼、张嘴和眉眼的局部关系仍会更新。
-
 Test 3 中旧的 `CumulativeFaceFusion` 已关闭，因此不应再出现 `TEST 2 | Cumulative geometry prototype` 的模拟观众面板；Test 2 场景本身未改变。
 
 ## 可运行的第 1 阶段原型：数学脸 + 三态粒子
