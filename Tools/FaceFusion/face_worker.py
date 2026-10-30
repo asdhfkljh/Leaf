@@ -100,6 +100,27 @@ def sample_skin(landmarks, frame, np):
     return (np.median(np.concatenate(chunks),axis=0)/255).tolist()
 
 
+def point_cloud_data(landmarks, frame, np):
+    """Pack Face Landmarker geometry plus the RGB pixel under each landmark.
+
+    This stays local and intentionally returns no source image. Unity maps the
+    flattened triples directly onto its particle target array.
+    """
+    h, w = frame.shape[:2]
+    if len(landmarks) != 478:
+        return None, None
+    points, colours = [], []
+    for landmark in landmarks:
+        if not np.isfinite([landmark.x, landmark.y, landmark.z]).all():
+            return None, None
+        x = int(np.clip(round(landmark.x * (w - 1)), 0, w - 1))
+        y = int(np.clip(round(landmark.y * (h - 1)), 0, h - 1))
+        b, g, r = frame[y, x]
+        points.extend([round(float(landmark.x), 6), round(float(landmark.y), 6), round(float(landmark.z), 6)])
+        colours.extend([round(float(r) / 255, 5), round(float(g) / 255, 5), round(float(b) / 255, 5)])
+    return points, colours
+
+
 def main():
     import cv2
     import mediapipe as mp
@@ -127,6 +148,10 @@ def main():
                 if ratios:
                     reply.update(ratios)
                 if result.face_landmarks:
+                    points, colours = point_cloud_data(result.face_landmarks[0], frame, np)
+                    if points is not None:
+                        reply['landmarks_flat'] = points
+                        reply['landmark_rgb_flat'] = colours
                     image = portrait(result.face_landmarks[0], frame, np, cv2)
                     if image:
                         reply['portrait'] = image

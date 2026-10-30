@@ -6,7 +6,7 @@
 
 目标不是继续替换实体 FBX 人头，而是让摄像头中的一张人脸在声音输入达到 **High** 时，化为带摄像头 RGB 颜色的三维粒子脸；没有输入或只有 **Low** 输入时，则保持为抽象粒子云。
 
-Test 3 已有 `Authoritycontroller`、`AuthorityVisualController`、录音和 High/Low 声音分类组件。现已接入 `ParticleFacePrototype`：它在运行时创建 `ParticleFaceSystem`，以蓝色呼吸云团作为 Idle，High 时形成带五官起伏的程序化 3D 点云脸，Low 时短暂扰动后回聚。当前仍**未**接入摄像头采集、MediaPipe 或真人 RGB 采样；High 的暖色脸是视觉占位，而不是真人脸重建。
+Test 3 已有 `Authoritycontroller`、`AuthorityVisualController`、录音和 High/Low 声音分类组件。现已接入 `ParticleFacePrototype` 与 `MediaPipeParticleFaceBridge`：它在运行时创建 `ParticleFaceSystem`，以蓝色呼吸云团作为 Idle，High 时形成由当前摄像头人脸关键点和 RGB 颜色驱动的点云脸，Low 时短暂扰动后回聚。Face Landmarker 在本机 Python 进程运行，摄像头帧只在内存中传给该进程，不保存也不上传。
 
 ## 从「替换模型」到「粒子人脸」
 
@@ -55,7 +55,9 @@ OpenSMILE + AuthorityVoiceClassifier ──> High / Low ──> ParticleFaceCont
 
 ### 当前 Test 3 实现（已接入）
 
-`Assets/Scripts/ParticleFacePrototype.cs` 已直接挂在 `Authoritycontroller` 上，并订阅其 `HighStarted`、`LowStarted` 和 `SequenceCancelled` 事件。因此无需在 Inspector 手动拖拽引用：按 H 会形成程序化粒子脸，按 L 会触发 Low 扰动，按 I 会返回 Idle。场景保存的粒子中心为 `(0, 2.12, 0)`，与 Test 3 的现有摄像机构图对齐。运行时才创建粒子对象，避免把数千个粒子状态写入场景文件。
+`Assets/Scripts/ParticleFacePrototype.cs` 已直接挂在 `Authoritycontroller` 上，并订阅其 `HighStarted`、`LowStarted` 和 `SequenceCancelled` 事件。`MediaPipeParticleFaceBridge` 会在 Play 时请求摄像头权限，以 `Tools/FaceFusion/.venv/bin/python` 启动已有的本地 MediaPipe Face Landmarker，并每秒处理约 8 帧。按 H 会形成最近识别到的真人粒子脸，按 L 会触发 Low 扰动，按 I 会返回 Idle。场景保存的粒子中心为 `(0, 2.12, 0)`，与 Test 3 的现有摄像机构图对齐。运行时才创建粒子对象，避免把数千个粒子状态写入场景文件。
+
+Test 3 中旧的 `CumulativeFaceFusion` 已关闭，因此不应再出现 `TEST 2 | Cumulative geometry prototype` 的模拟观众面板；Test 2 场景本身未改变。
 
 ## 可运行的第 1 阶段原型：数学脸 + 三态粒子
 

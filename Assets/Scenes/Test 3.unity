@@ -354,6 +354,7 @@ GameObject:
   - component: {fileID: 990967484}
   - component: {fileID: 990967485}
   - component: {fileID: 990967486}
+  - component: {fileID: 990967487}
   m_Layer: 0
   m_Name: Authoritycontroller
   m_TagString: Untagged
@@ -574,6 +575,27 @@ MonoBehaviour:
   shadowColor: {r: 0.2, g: 0.07, b: 0.1, a: 0.95}
   skinColor: {r: 1, g: 0.55, b: 0.36, a: 0.95}
   highlightColor: {r: 1, g: 0.88, b: 0.67, a: 0.95}
+--- !u!114 &990967487
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 990967479}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73f49b6a3b574de999a3056675c7b2f8, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  particleFace: {fileID: 990967486}
+  authority: {fileID: 990967480}
+  pythonExecutable: Tools/FaceFusion/.venv/bin/python
+  cameraDevice:
+  samplesPerSecond: 8
+  faceWidth: 1.28
+  faceHeight: 1.7
+  faceDepth: 1.15
+  particleSpread: 0.01
 --- !u!4 &990967481
 Transform:
   m_ObjectHideFlags: 0
@@ -1047,7 +1069,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 990967479}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 6d865018b6ea42f09ed20cf7ca60664f, type: 3}
   m_Name:

@@ -39,6 +39,8 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     private float lowStartedAt;
     private Material runtimeMaterial;
 
+    public int ParticleCount => particleCount;
+
     private void Awake()
     {
         CreateParticleSystem();

@@ -135,4 +135,17 @@ class SkinColourTests(unittest.TestCase):
         self.p[1].x=float('nan')
         self.assertIsNone(sample_skin(self.p,frame,np))
 
+
+class PointCloudTests(unittest.TestCase):
+    def test_flattened_landmarks_keep_depth_and_rgb_order(self):
+        from face_worker import point_cloud_data
+        points = [SimpleNamespace(x=.25, y=.5, z=-.1) for _ in range(478)]
+        frame = np.zeros((20, 40, 3), np.uint8)
+        frame[10, 10] = (30, 80, 200)  # BGR input frame
+        geometry, colours = point_cloud_data(points, frame, np)
+        self.assertEqual(len(geometry), 478 * 3)
+        self.assertEqual(len(colours), 478 * 3)
+        np.testing.assert_allclose(geometry[:3], [.25, .5, -.1])
+        np.testing.assert_allclose(colours[:3], [200 / 255, 80 / 255, 30 / 255], atol=1e-5)
+
 if __name__=='__main__': unittest.main()
