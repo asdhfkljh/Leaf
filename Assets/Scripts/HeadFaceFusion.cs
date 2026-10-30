@@ -1,14 +1,13 @@
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using UnityEngine;
 using Process = System.Diagnostics.Process;
 using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 
-/// <summary>Shows a frozen, locally captured face on a blank mask during High.</summary>
+/// <summary>Shows a frozen, locally captured face on the original head surface during High.</summary>
 public class HeadFaceFusion : MonoBehaviour
 {
     [SerializeField] private AuthorityVisualController visualController;
@@ -20,12 +19,14 @@ public class HeadFaceFusion : MonoBehaviour
     [SerializeField, Min(.1f)] private float fadeInSeconds = 1.5f;
     [SerializeField, Min(0)] private float holdSeconds = 1f;
     [SerializeField, Min(.1f)] private float fadeOutSeconds = 1f;
+    [Header("Face region on original head (normalized bounds)")]
+    [SerializeField] private Vector2 faceHorizontalRange = new Vector2(.12f, .88f);
+    [SerializeField] private Vector2 faceVerticalRange = new Vector2(.25f, .92f);
     private readonly ConcurrentQueue<string> messages = new ConcurrentQueue<string>();
     private Texture2D latestPortrait, frozenPortrait;
     private float portraitAt;
-    private Material portraitMaterial, blankMaterial;
+    private Material portraitMaterial;
     private Mesh portraitMesh;
-    private readonly List<Renderer> hiddenRenderers = new List<Renderer>();
     private Process worker;
     private WebCamTexture webcam;
     private Texture2D frame;
@@ -78,44 +79,104 @@ public class HeadFaceFusion : MonoBehaviour
             if (first) { bounds = new Bounds(p, Vector3.zero); first = false; } else bounds.Encapsulate(p);
         }
         var shader = Shader.Find("Leaf/FaceReveal");
-        var blankShader = Shader.Find("Standard");
-        if (shader == null || blankShader == null) return false;
-        foreach (var renderer in head.GetComponentsInChildren<Renderer>())
-            if (renderer.enabled) { hiddenRenderers.Add(renderer); renderer.enabled = false; }
-        maskObject = new GameObject("Blank mask and captured face");
+        if (shader == null) return false;
+        maskObject = new GameObject("Face photo overlay");
         maskObject.layer = source.gameObject.layer;
         maskObject.transform.SetParent(head, false);
-        var blank = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        blank.name = "Blank head"; blank.layer = maskObject.layer;
-        blank.transform.SetParent(maskObject.transform, false);
-        blank.transform.localPosition = bounds.center;
-        blank.transform.localScale = bounds.size;
-        Destroy(blank.GetComponent<Collider>());
-        blankMaterial = new Material(blankShader); blankMaterial.color = Color.white;
-        blank.GetComponent<Renderer>().sharedMaterial = blankMaterial;
         var face = new GameObject("Frozen portrait"); face.layer = maskObject.layer;
         face.transform.SetParent(maskObject.transform, false);
-        // Front is +Z on this project's head. A curved patch sits just outside the blank ellipsoid.
-        const int columns = 32, rows = 40;
+        // Sample the actual mesh surface, keeping its nose, cheeks and jaw depth.
+        // An isolated collider is used only for construction; original renderers stay untouched.
+        var probe = new GameObject("Face surface sampler");
+        probe.transform.SetParent(source.transform, false);
+        var collider = probe.AddComponent<MeshCollider>(); collider.sharedMesh = source.sharedMesh;
+        Physics.SyncTransforms();
+        const int columns = 80, rows = 96;
         var vertices = new Vector3[(columns + 1) * (rows + 1)];
-        var uv = new Vector2[vertices.Length]; var triangles = new int[columns * rows * 6];
-        for (int y = 0; y <= rows; y++) for (int x = 0; x <= columns; x++)
+        var uv = new Vector2[vertices.Length];
+        var valid = new bool[vertices.Length];
+        var triangles = new System.Collections.Generic.List<int>();
+        float offset = bounds.size.z * .0025f;
+        try
         {
-            float u = (float)x / columns, v = (float)y / rows;
-            float px = (u - .5f) * 1.65f, py = (v - .5f) * 1.70f;
-            float z = Mathf.Sqrt(Mathf.Max(.015f, 1 - px * px - py * py));
-            int i = y * (columns + 1) + x;
-            vertices[i] = bounds.center + Vector3.Scale(new Vector3(px, py, z + .018f), bounds.extents);
-            uv[i] = new Vector2(1 - u, v); // +Z front has screen-right along local -X.
-            if (x < columns && y < rows)
+            for (int y = 0; y <= rows; y++) for (int x = 0; x <= columns; x++)
             {
-                int t = (y * columns + x) * 6;
-                triangles[t] = i; triangles[t+1] = i+1; triangles[t+2] = i+columns+1;
-                triangles[t+3] = i+1; triangles[t+4] = i+columns+2; triangles[t+5] = i+columns+1;
+                float u = (float)x / columns, v = (float)y / rows;
+                int i = y * (columns + 1) + x;
+                float px = Mathf.Lerp(bounds.min.x, bounds.max.x, Mathf.Lerp(faceHorizontalRange.x, faceHorizontalRange.y, u));
+                float py = Mathf.Lerp(bounds.min.y, bounds.max.y, Mathf.Lerp(faceVerticalRange.x, faceVerticalRange.y, v));
+                var origin = head.TransformPoint(new Vector3(px, py, bounds.max.z + bounds.size.z));
+                var end = head.TransformPoint(new Vector3(px, py, bounds.min.z));
+                var ray = new Ray(origin, end - origin);
+                if (collider.Raycast(ray, out var hit, Vector3.Distance(origin, end)))
+                {
+                    var local = head.InverseTransformPoint(hit.point);
+                    // Exclude rear surfaces visible through the original eye openings.
+                    if (local.z > bounds.center.z)
+                    { vertices[i] = local + Vector3.forward * offset; valid[i] = true; }
+                }
+                if (!valid[i]) vertices[i] = new Vector3(px, py, 0);
+                uv[i] = new Vector2(1 - u, v);
+            }
+            // Fill only enclosed eye openings, using neighboring surface depth. Outside
+            // the head silhouette remains invalid, so ears/neck never acquire a photo sheet.
+            var originalValid = (bool[])valid.Clone();
+            for (int y = 1; y < rows; y++) for (int x = 1; x < columns; x++)
+            {
+                int i = y * (columns + 1) + x;
+                if (valid[i]) continue;
+                int left = x-1, right = x+1, down = y-1, up = y+1;
+                while (left >= 0 && !originalValid[y*(columns+1)+left]) left--;
+                while (right <= columns && !originalValid[y*(columns+1)+right]) right++;
+                while (down >= 0 && !originalValid[down*(columns+1)+x]) down--;
+                while (up <= rows && !originalValid[up*(columns+1)+x]) up++;
+                if (left < 0 || right > columns || down < 0 || up > rows || right-left > 24 || up-down > 20) continue;
+                vertices[i].z = (vertices[y*(columns+1)+left].z + vertices[y*(columns+1)+right].z +
+                    vertices[down*(columns+1)+x].z + vertices[up*(columns+1)+x].z) * .25f;
+                valid[i] = true;
+            }
+            // The source has open eye sockets. Bridge their depth at the surrounding
+            // face plane, including inner/back-facing socket geometry hit by the probe.
+            for (int y = 1; y < rows; y++) for (int x = 1; x < columns; x++)
+            {
+                int i = y*(columns+1)+x;
+                float nx = (vertices[i].x-bounds.min.x)/bounds.size.x;
+                float ny = (vertices[i].y-bounds.min.y)/bounds.size.y;
+                float eyeX = nx < .5f ? .28f : .72f;
+                if (Mathf.Pow((nx-eyeX)/.105f,2) + Mathf.Pow((ny-.68f)/.045f,2) > 1) continue;
+                int left = Mathf.Clamp(Mathf.RoundToInt(Mathf.InverseLerp(faceHorizontalRange.x,faceHorizontalRange.y,eyeX-.115f)*columns),0,columns);
+                int right = Mathf.Clamp(Mathf.RoundToInt(Mathf.InverseLerp(faceHorizontalRange.x,faceHorizontalRange.y,eyeX+.115f)*columns),0,columns);
+                int a = y*(columns+1)+left, b = y*(columns+1)+right;
+                if (!valid[a] || !valid[b]) continue;
+                float bridge = Mathf.Lerp(vertices[a].z,vertices[b].z,Mathf.InverseLerp(left,right,x)) + offset;
+                vertices[i].z = valid[i] ? Mathf.Max(vertices[i].z,bridge) : bridge;
+                valid[i] = true;
+            }
+            // Conservative depth envelope prevents the sampled grid from cutting through
+            // sharp nose/nostril edges between samples, without altering the head mesh.
+            var sampled = (Vector3[])vertices.Clone();
+            for (int y = 0; y <= rows; y++) for (int x = 0; x <= columns; x++)
+            {
+                int i = y*(columns+1)+x;
+                if (!valid[i]) continue;
+                for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++)
+                {
+                    int xx = x+dx, yy = y+dy;
+                    if (xx < 0 || xx > columns || yy < 0 || yy > rows) continue;
+                    int j = yy*(columns+1)+xx;
+                    if (valid[j]) vertices[i].z = Mathf.Max(vertices[i].z,sampled[j].z);
+                }
+            }
+            for (int y = 0; y < rows; y++) for (int x = 0; x < columns; x++)
+            {
+                int i = y*(columns+1)+x, j = i+columns+1;
+                if (valid[i] && valid[i+1] && valid[j]) { triangles.Add(i); triangles.Add(i+1); triangles.Add(j); }
+                if (valid[i+1] && valid[j+1] && valid[j]) { triangles.Add(i+1); triangles.Add(j+1); triangles.Add(j); }
             }
         }
-        portraitMesh = new Mesh { name = "Curved face photo" };
-        portraitMesh.vertices = vertices; portraitMesh.uv = uv; portraitMesh.triangles = triangles;
+        finally { probe.SetActive(false); Destroy(probe); }
+        portraitMesh = new Mesh { name = "Original head fitted face photo" };
+        portraitMesh.vertices = vertices; portraitMesh.uv = uv; portraitMesh.triangles = triangles.ToArray();
         portraitMesh.RecalculateNormals(); portraitMesh.RecalculateBounds();
         face.AddComponent<MeshFilter>().sharedMesh = portraitMesh;
         portraitMaterial = new Material(shader);
@@ -209,7 +270,7 @@ public class HeadFaceFusion : MonoBehaviour
     {
         Cancel();
         if (!ready || workerFailed || portraitMaterial == null || latestPortrait == null || Time.unscaledTime - portraitAt > maximumSnapshotAge)
-        { Debug.Log("Face reveal: no fresh frontal face; keeping blank mask.", this); return; }
+        { Debug.Log("Face reveal: no fresh frontal face; keeping original head.", this); return; }
         frozenPortrait = Instantiate(latestPortrait);
         portraitMaterial.mainTexture = frozenPortrait;
         armed = true;
@@ -265,11 +326,8 @@ public class HeadFaceFusion : MonoBehaviour
             try { if (!worker.HasExited) worker.Kill(); } catch (InvalidOperationException) { }
             worker.Dispose(); worker = null;
         }
-        foreach (var renderer in hiddenRenderers) if (renderer != null) renderer.enabled = true;
-        hiddenRenderers.Clear();
         if (latestPortrait != null) Destroy(latestPortrait); latestPortrait = null;
         if (portraitMaterial != null) Destroy(portraitMaterial);
-        if (blankMaterial != null) Destroy(blankMaterial);
         if (portraitMesh != null) Destroy(portraitMesh);
         if (maskObject != null) { maskObject.SetActive(false); Destroy(maskObject); }
         maskObject = null;
