@@ -153,20 +153,14 @@ public sealed class MediaPipeParticleFaceBridge : MonoBehaviour
             positions = new Vector3[count];
             colours = new Color[count];
         }
-        // Anchor all frames around stable facial references, rather than the camera frame.
-        // Expressions still alter local landmark relationships, but walking sideways or leaning
-        // toward the camera no longer drags the complete particle face through the scene.
-        float centerX = (landmarks[234 * 3] + landmarks[454 * 3]) * .5f;
-        float centerY = (landmarks[10 * 3 + 1] + landmarks[152 * 3 + 1]) * .5f;
-        float noseDepth = landmarks[1 * 3 + 2];
         for (int i = 0; i < count; i++)
         {
             int index = i % landmarkCount;
             int offset = index * 3;
             // Face Landmarker: x/y are image normalized; z is relative depth and is negative toward the camera.
-            float x = (landmarks[offset] - centerX) * faceWidth;
-            float y = (centerY - landmarks[offset + 1]) * faceHeight;
-            float z = -(landmarks[offset + 2] - noseDepth) * faceDepth;
+            float x = (landmarks[offset] - .5f) * faceWidth;
+            float y = (.5f - landmarks[offset + 1]) * faceHeight;
+            float z = -landmarks[offset + 2] * faceDepth;
             Vector3 spread = DeterministicSpread(i) * particleSpread;
             positions[i] = new Vector3(x, y, z) * faceScale + spread;
             colours[i] = new Color(rgb[offset], rgb[offset + 1], rgb[offset + 2], .96f);

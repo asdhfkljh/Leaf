@@ -704,7 +704,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   worldCenter: {x: 0.115, y: 2.6, z: 0}
   particleCount: 16000
-  particleSize: 0.055
+  particleSize: 0.028
   cloudRadius: 0.68
   cloudShellThickness: 0.32
   cloudSurfaceWaveAmplitude: 0.055
