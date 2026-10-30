@@ -389,6 +389,8 @@ MonoBehaviour:
   keyboardLowScore: 20
   scoreHysteresis: 5
   enableKeyboardTesting: 1
+  keyboardTestText: The words float around your head and slowly fade away as you
+    listen to this voice.
   playKey: 104
   lowKey: 108
   resetKey: 114
@@ -550,53 +552,6 @@ MonoBehaviour:
   lowParticleDensity: 0.645
   lowDissolveParticleLifetime: 2
   lowDissolveParticleSpeed: 0.12
---- !u!114 &990967486
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 990967479}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6e125d627f1a4ec7a6be74bb0c1ced8b, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
-  worldCenter: {x: 0, y: 2.12, z: 0}
-  particleCount: 2400
-  particleSize: 0.022
-  cloudRadius: 0.48
-  transitionSpeed: 3.2
-  lowJitter: 0.16
-  lowRecoverySeconds: 1.4
-  enableKeyboardPreview: 1
-  idleKey: 105
-  cloudColor: {r: 0.08, g: 0.72, b: 1, a: 0.9}
-  shadowColor: {r: 0.2, g: 0.07, b: 0.1, a: 0.95}
-  skinColor: {r: 1, g: 0.55, b: 0.36, a: 0.95}
-  highlightColor: {r: 1, g: 0.88, b: 0.67, a: 0.95}
---- !u!114 &990967487
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 990967479}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 73f49b6a3b574de999a3056675c7b2f8, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
-  particleFace: {fileID: 990967486}
-  authority: {fileID: 990967480}
-  pythonExecutable: Tools/FaceFusion/.venv/bin/python
-  cameraDevice:
-  samplesPerSecond: 8
-  faceWidth: 1.28
-  faceHeight: 1.7
-  faceDepth: 1.15
-  faceScale: 4
-  particleSpread: 0.01
 --- !u!4 &990967481
 Transform:
   m_ObjectHideFlags: 0
@@ -687,6 +642,101 @@ MonoBehaviour:
   openSmileInput: {fileID: 990967482}
   visualController: {fileID: 990967480}
   logClassification: 1
+--- !u!114 &990967484
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 990967479}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c810c582da114a4383a8b937957b1742, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  visualController: {fileID: 990967480}
+  head: {fileID: 1232253402}
+  pythonExecutable: Tools/FaceFusion/.venv/bin/python
+  cameraDevice: 
+  sampleInterval: 0.5
+  maximumSnapshotAge: 2
+  fadeInSeconds: 1.5
+  holdSeconds: 1
+  fadeOutSeconds: 1
+  faceHorizontalRange: {x: 0.12, y: 0.88}
+  faceVerticalRange: {x: 0.25, y: 0.92}
+  matchSkinColour: 1
+  skinColourStrength: 1
+  skinBrightness: 1
+  skinSmoothness: 0.2
+--- !u!114 &990967485
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 990967479}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6d865018b6ea42f09ed20cf7ca60664f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  head: {fileID: 1232253402}
+  visualController: {fileID: 990967480}
+  showControls: 1
+  automaticRegion: 1
+  region: 1
+  highInfluence: 0.85
+  lowInfluence: 0.2
+  transitionSeconds: 1.5
+  maximumDisplacement: 0.15
+--- !u!114 &990967486
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 990967479}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6e125d627f1a4ec7a6be74bb0c1ced8b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  worldCenter: {x: 0.115, y: 2.6, z: 0}
+  particleCount: 16000
+  particleSize: 0.028
+  cloudRadius: 0.48
+  transitionSpeed: 3.2
+  lowJitter: 0.16
+  lowRecoverySeconds: 1.4
+  enableKeyboardPreview: 1
+  idleKey: 105
+  cloudColor: {r: 0.08, g: 0.72, b: 1, a: 0.9}
+  shadowColor: {r: 0.2, g: 0.07, b: 0.1, a: 0.95}
+  skinColor: {r: 1, g: 0.55, b: 0.36, a: 0.95}
+  highlightColor: {r: 1, g: 0.88, b: 0.67, a: 0.95}
+--- !u!114 &990967487
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 990967479}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 73f49b6a3b574de999a3056675c7b2f8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  particleFace: {fileID: 990967486}
+  authority: {fileID: 990967480}
+  pythonExecutable: Tools/FaceFusion/.venv/bin/python
+  cameraDevice: 
+  samplesPerSecond: 8
+  faceWidth: 1.91
+  faceHeight: 1.7
+  faceDepth: 1.15
+  faceScale: 4
+  particleSpread: 0.01
 --- !u!1 &1086376486
 GameObject:
   m_ObjectHideFlags: 0
@@ -1023,6 +1073,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: head
       objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: bd143febf3d9b4412a847d291a42f0ae, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects:
     - {fileID: 65702495048144492, guid: bd143febf3d9b4412a847d291a42f0ae, type: 3}
@@ -1048,39 +1102,3 @@ SceneRoots:
   - {fileID: 1086376489}
   - {fileID: 2020973649}
   - {fileID: 990967481}
---- !u!114 &990967484
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 990967479}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c810c582da114a4383a8b937957b1742, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
-  visualController: {fileID: 990967480}
-  head: {fileID: 1232253402}
-  morphMesh: {fileID: 4300000, guid: 7e9773fb69d0c463ab60cb1277e58568, type: 2}
---- !u!114 &990967485
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 990967479}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6d865018b6ea42f09ed20cf7ca60664f, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
-  head: {fileID: 1232253402}
-  visualController: {fileID: 990967480}
-  showControls: 1
-  automaticRegion: 1
-  region: 1
-  highInfluence: 0.85
-  lowInfluence: 0.2
-  transitionSeconds: 1.5
-  maximumDisplacement: 0.15
