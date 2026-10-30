@@ -44,7 +44,7 @@ def measure(landmarks, width, height, np):
     return {'eye_spacing_ratio': eye_ratio, 'mouth_width_ratio': mouth_ratio}
 
 
-def portrait(landmarks, frame, np, cv2, targets=None):
+def portrait(landmarks, frame, np, cv2):
     """Return an upright, contour-masked PNG; reject clipped/small or strongly turned faces."""
     h, w = frame.shape[:2]
     p = np.array([(v.x*w, v.y*h) for v in landmarks])
@@ -64,21 +64,7 @@ def portrait(landmarks, frame, np, cv2, targets=None):
     # Inward feather keeps background outside the contour fully transparent.
     alpha = np.clip(cv2.distanceTransform(mask, cv2.DIST_L2, 3)/max(3,(x1-x0)*.045),0,1)
     rgba = cv2.cvtColor(crop, cv2.COLOR_BGR2BGRA); rgba[:,:,3] = (alpha*255).astype(np.uint8)
-    # Anchor the photo's eyes and mouth to the model instead of stretching the face oval.
-    source = np.array([(p[33]+p[133])/2, (p[263]+p[362])/2,
-                       (p[61]+p[291])/2], dtype=np.float32) - np.array([x0,y0], np.float32)
-    if source[0,0] > source[1,0]: source[[0,1]] = source[[1,0]]
-    if targets is None:
-        targets = [.2236842,.358209,.7763158,.358209,.5,.716418]
-    target = np.asarray(targets, dtype=np.float32)
-    if target.size != 6 or not np.isfinite(target).all(): return None
-    target = target.reshape(3,2)
-    if np.any(target < 0) or np.any(target > 1): return None
-    if target[1,0]-target[0,0] < .1 or target[2,1]-target[0,1] < .1: return None
-    if np.linalg.norm(source[1]-source[0]) < 20 or source[2,1]-max(source[0,1],source[1,1]) < 15: return None
-    transform = cv2.getAffineTransform(source, target*np.array([383,511],np.float32))
-    rgba = cv2.warpAffine(rgba, transform, (384,512), flags=cv2.INTER_LINEAR,
-                          borderMode=cv2.BORDER_CONSTANT, borderValue=(0,0,0,0))
+    rgba = cv2.resize(rgba, (384,512), interpolation=cv2.INTER_AREA)
     ok, encoded = cv2.imencode('.png', rgba)
     return base64.b64encode(encoded).decode() if ok else None
 
@@ -141,7 +127,7 @@ def main():
                 if ratios:
                     reply.update(ratios)
                 if result.face_landmarks:
-                    image = portrait(result.face_landmarks[0], frame, np, cv2, packet.get("portrait_targets"))
+                    image = portrait(result.face_landmarks[0], frame, np, cv2)
                     if image:
                         reply['portrait'] = image
                         skin = sample_skin(result.face_landmarks[0], frame, np)

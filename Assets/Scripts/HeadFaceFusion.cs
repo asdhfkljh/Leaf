@@ -22,10 +22,6 @@ public class HeadFaceFusion : MonoBehaviour
     [Header("Face region on original head (normalized bounds)")]
     [SerializeField] private Vector2 faceHorizontalRange = new Vector2(.12f, .88f);
     [SerializeField] private Vector2 faceVerticalRange = new Vector2(.25f, .92f);
-    [Header("Photo alignment on head (normalized bounds)")]
-    [SerializeField, Range(.25f, .55f)] private float photoEyeSpacing = .42f;
-    [SerializeField, Range(.5f, .8f)] private float photoEyeHeight = .68f;
-    [SerializeField, Range(.3f, .55f)] private float photoMouthHeight = .44f;
     [Header("Skin colour matching")]
     [SerializeField] private bool matchSkinColour = true;
     [SerializeField, Range(0, 1)] private float skinColourStrength = 1f;
@@ -58,7 +54,7 @@ public class HeadFaceFusion : MonoBehaviour
         public int id;
         public float[] skin_rgb;
     }
-    [Serializable] private class Request { public int id; public string image; public int rotation; public float[] portrait_targets; }
+    [Serializable] private class Request { public int id; public string image; public int rotation; }
 
     private void OnEnable() => StartCoroutine(Initialize());
 
@@ -331,26 +327,13 @@ public class HeadFaceFusion : MonoBehaviour
             }
         frame.SetPixels32(pixels); frame.Apply();
         string payload = JsonUtility.ToJson(new Request { id = ++requestId,
-            image = Convert.ToBase64String(frame.EncodeToJPG(85)), rotation = webcam.videoRotationAngle,
-            portrait_targets = PortraitAlignmentTargets() });
+            image = Convert.ToBase64String(frame.EncodeToJPG(85)), rotation = webcam.videoRotationAngle });
         nextSample = Time.unscaledTime + sampleInterval; sentAt = Time.unscaledTime; inFlight = true;
         var process = worker; int currentSession = session;
         Task.Run(() => {
             try { process.StandardInput.WriteLine(payload); process.StandardInput.Flush(); }
             catch (Exception) { if (currentSession == session) messages.Enqueue("{\"type\":\"error\",\"message\":\"Worker input closed\"}"); }
         });
-    }
-
-    private float[] PortraitAlignmentTargets()
-    {
-        // Image coordinates have Y down; surface UVs have Y up and mirrored X.
-        float width = Mathf.Max(.01f, faceHorizontalRange.y - faceHorizontalRange.x);
-        float height = Mathf.Max(.01f, faceVerticalRange.y - faceVerticalRange.x);
-        float left = (faceHorizontalRange.y - (.5f + photoEyeSpacing * .5f)) / width;
-        float right = (faceHorizontalRange.y - (.5f - photoEyeSpacing * .5f)) / width;
-        float eyes = (faceVerticalRange.y - photoEyeHeight) / height;
-        float mouth = (faceVerticalRange.y - photoMouthHeight) / height;
-        return new[] { left, eyes, right, eyes, (faceHorizontalRange.y - .5f) / width, mouth };
     }
 
     private void Capture()

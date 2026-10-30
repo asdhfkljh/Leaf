@@ -51,14 +51,3 @@ HeadFaceFusion exposes Match Skin Colour, Skin Colour Strength, Skin Brightness 
 This matches the photographed colour, not illumination-independent skin reflectance;
 strong coloured lighting, makeup or occluded cheeks can still bias the estimate. The
 portrait's existing inward alpha feather blends its boundary into the tinted head.
-
-## Photo proportion and placement
-
-The worker now aligns both eye centres and the mouth centre to model-space targets
-before returning the masked portrait. It no longer stretches the face's bounding box
-across the entire patch. This corrects photos whose eyes appear above the model's eye
-sockets and reduces the default horizontal eye spacing to 42% of the head bounds.
-HeadFaceFusion > Photo Alignment exposes Photo Eye Spacing (smaller = narrower), Photo
-Eye Height and Photo Mouth Height (larger = higher). Defaults are .42, .68 and .44 for
-this head. Changes apply to the next sampled photo/High. These are a three-point fit;
-individual nose/chin shapes and strong perspective differences still need calibration.
