@@ -94,6 +94,10 @@ class PortraitTests(unittest.TestCase):
             self.points[index] = SimpleNamespace(x=.5+.22*np.sin(angle),y=.5-.36*np.cos(angle))
         self.points[33] = SimpleNamespace(x=.35,y=.38)
         self.points[263] = SimpleNamespace(x=.65,y=.38)
+        self.points[133] = SimpleNamespace(x=.4,y=.38)
+        self.points[362] = SimpleNamespace(x=.6,y=.38)
+        self.points[61] = SimpleNamespace(x=.4,y=.68)
+        self.points[291] = SimpleNamespace(x=.6,y=.68)
         self.frame = np.full((480,640,3), 120, np.uint8)
 
     def test_mask_and_talking(self):
@@ -104,6 +108,22 @@ class PortraitTests(unittest.TestCase):
         self.assertEqual(int(decoded[0,0,3]),0)
         self.assertEqual(int(decoded[256,192,3]),255)
         self.assertTrue(np.any((decoded[:,:,3]>0)&(decoded[:,:,3]<255)))
+
+    def test_eye_and_mouth_alignment(self):
+        targets = [.2236842,.358209,.7763158,.358209,.5,.716418]
+        # Distinct feature markers must land at the requested model positions.
+        for xy,colour in [((240,182),(0,0,255)),((400,182),(0,255,0)),((320,326),(255,0,0))]:
+            cv2.circle(self.frame,xy,5,colour,-1)
+        encoded = self.portrait(self.points,self.frame,np,cv2,targets)
+        result = cv2.imdecode(np.frombuffer(base64.b64decode(encoded),np.uint8),cv2.IMREAD_UNCHANGED)
+        for j,channel in enumerate([2,1,0]):
+            x,y = np.rint(np.array(targets[j*2:j*2+2])*[383,511]).astype(int)
+            self.assertGreater(int(result[y,x,channel]),230)
+            self.assertEqual(int(result[y,x,3]),255)
+
+    def test_invalid_alignment_rejected(self):
+        self.assertIsNone(self.portrait(self.points,self.frame,np,cv2,[float('nan')]*6))
+        self.assertIsNone(self.portrait(self.points,self.frame,np,cv2,[.5,.5,.5,.5,.5,.5]))
 
     def test_clipped_or_invalid_rejected(self):
         self.points[10].y=-.1
