@@ -179,6 +179,8 @@ public class AuthorityVisualController : MonoBehaviour
     public event Action LowStarted;
     public event Action HighMotionStarted;
     public event Action HighTextFinished;
+    /// <summary>Raised once the active High or Low text animation has fully disappeared.</summary>
+    public event Action TextEffectFinished;
     public event Action SequenceCancelled;
 
     public float AuthorityScore => authorityScore;
@@ -431,6 +433,7 @@ public class AuthorityVisualController : MonoBehaviour
         {
             Debug.LogWarning("AuthorityVisualController: the TMP text has no visible characters to animate.", this);
             HighTextFinished?.Invoke();
+            TextEffectFinished?.Invoke();
             CompleteSequenceAndRestore();
             yield break;
         }
@@ -447,6 +450,7 @@ public class AuthorityVisualController : MonoBehaviour
 
         AnimateCharacters(totalDuration);
         HighTextFinished?.Invoke();
+        TextEffectFinished?.Invoke();
         if (resetAfterSequenceDelay > 0f)
             yield return new WaitForSeconds(resetAfterSequenceDelay);
         CompleteSequenceAndRestore();
@@ -456,6 +460,7 @@ public class AuthorityVisualController : MonoBehaviour
     {
         yield return PlayHeadOrbitRoutine();
         yield return PlayLowFragmentDissolve();
+        TextEffectFinished?.Invoke();
         if (resetAfterSequenceDelay > 0f)
             yield return new WaitForSeconds(resetAfterSequenceDelay);
         CompleteSequenceAndRestore();

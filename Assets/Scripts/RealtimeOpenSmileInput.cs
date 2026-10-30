@@ -8,6 +8,7 @@ using System.IO;
 using Adrenak.UniMic;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.Serialization;
 
 [Serializable]
 public class OpenSmileStringEvent : UnityEvent<string> { }
@@ -35,9 +36,10 @@ public class RealtimeOpenSmileInput : MonoBehaviour
     [SerializeField] private bool enableKeyboardToggle = true;
     [SerializeField] private KeyCode toggleRecordingKey = KeyCode.Alpha1;
 
-    [Header("Low-state playback")]
-    [Tooltip("Replays the most recently completed microphone recording when the voice result enters Low.")]
-    [SerializeField, Range(0f, 1f)] private float lowPlaybackVolume = 1f;
+    [Header("Recorded-voice playback")]
+    [Tooltip("Replays the most recently completed microphone recording after either text effect has finished.")]
+    [FormerlySerializedAs("lowPlaybackVolume")]
+    [SerializeField, Range(0f, 1f)] private float playbackVolume = 1f;
 
     [Header("Output")]
     [SerializeField] private bool logFeatureJson = true;
@@ -110,10 +112,10 @@ public class RealtimeOpenSmileInput : MonoBehaviour
         playbackSource.playOnAwake = false;
         playbackSource.loop = false;
         playbackSource.spatialBlend = 0f;
-        playbackSource.volume = lowPlaybackVolume;
+        playbackSource.volume = playbackVolume;
 
         if (visualController != null)
-            visualController.LowStarted += PlayLastRecording;
+            visualController.TextEffectFinished += PlayLastRecording;
     }
 
     private void Start()
@@ -536,8 +538,9 @@ public class RealtimeOpenSmileInput : MonoBehaviour
 
         playbackSource.Stop();
         playbackSource.clip = lastRecordingClip;
-        playbackSource.volume = lowPlaybackVolume;
+        playbackSource.volume = playbackVolume;
         playbackSource.Play();
+        Debug.Log("RealtimeOpenSmileInput: replaying the completed original recording.", this);
     }
 
     private void StopWorker()
@@ -578,7 +581,7 @@ public class RealtimeOpenSmileInput : MonoBehaviour
     private void OnDestroy()
     {
         if (visualController != null)
-            visualController.LowStarted -= PlayLastRecording;
+            visualController.TextEffectFinished -= PlayLastRecording;
         if (lastRecordingClip != null)
             Destroy(lastRecordingClip);
     }
