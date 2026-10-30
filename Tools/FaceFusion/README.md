@@ -35,3 +35,19 @@ Run `Tools/FaceFusion/.venv/bin/python -m unittest discover -s Tools/FaceFusion 
 Legacy proportion tests remain for the retained measurement helper. Portrait tests cover
 alpha masking, invalid/clipped faces and talking. Live webcam framing and voice timing
 must also be checked in Play on the installation hardware.
+
+## Automatic skin colour
+
+Each accepted portrait includes the median sRGB colour from two small cheek patches
+below the eyes and above the mouth. The darkest/brightest luminance tails are discarded;
+there is no fixed brightness threshold that would reject darker skin. High freezes the
+colour with the same photograph. Original head materials are cloned at runtime, tinted
+and made less glossy with the same fade as the portrait. Cancel/fade-out restores the
+starting appearance; disabling restores the original material references and releases
+clones. Other objects sharing the original material are unaffected.
+
+HeadFaceFusion exposes Match Skin Colour, Skin Colour Strength, Skin Brightness (default
+1) and Skin Smoothness (default .2). Brightness can compensate for installation lighting.
+This matches the photographed colour, not illumination-independent skin reflectance;
+strong coloured lighting, makeup or occluded cheeks can still bias the estimate. The
+portrait's existing inward alpha feather blends its boundary into the tinted head.

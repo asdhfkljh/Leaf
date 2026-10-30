@@ -69,6 +69,37 @@ def portrait(landmarks, frame, np, cv2):
     return base64.b64encode(encoded).decode() if ok else None
 
 
+def sample_skin(landmarks, frame, np):
+    """Median sRGB from two small cheek patches, with luminance tails excluded.
+
+    Patches lie below the eyes, outside the nose and above the mouth. No fixed
+    skin-brightness threshold is used, so dark complexions are retained.
+    """
+    h, w = frame.shape[:2]
+    p = np.array([(v.x*w, v.y*h) for v in landmarks], dtype=np.float64)
+    if p.shape != (478, 2) or not np.isfinite(p).all(): return None
+    width = np.linalg.norm(p[234]-p[454])
+    eye_y = (p[33,1]+p[263,1])/2
+    mouth_y = (p[61,1]+p[291,1])/2
+    if width < 80 or mouth_y-eye_y < 20: return None
+    rx, ry = max(3,width*.045), max(3,(mouth_y-eye_y)*.13)
+    chunks = []
+    for edge in [234,454]:
+        cx = (p[edge,0]+p[1,0])/2
+        cy = eye_y+(mouth_y-eye_y)*.65
+        x0,x1 = int(np.floor(cx-rx)), int(np.ceil(cx+rx))+1
+        y0,y1 = int(np.floor(cy-ry)), int(np.ceil(cy+ry))+1
+        if x0 < 0 or y0 < 0 or x1 > w or y1 > h: return None
+        yy,xx = np.mgrid[y0:y1,x0:x1]
+        pixels = frame[y0:y1,x0:x1][((xx-cx)/rx)**2+((yy-cy)/ry)**2 <= 1]
+        if len(pixels) < 16: return None
+        rgb = pixels[:,::-1].astype(np.float64)
+        luminance = rgb[:,0]*.2126 + rgb[:,1]*.7152 + rgb[:,2]*.0722
+        low,high = np.percentile(luminance,[20,80])
+        chunks.append(rgb[(luminance >= low)&(luminance <= high)])
+    return (np.median(np.concatenate(chunks),axis=0)/255).tolist()
+
+
 def main():
     import cv2
     import mediapipe as mp
@@ -97,7 +128,10 @@ def main():
                     reply.update(ratios)
                 if result.face_landmarks:
                     image = portrait(result.face_landmarks[0], frame, np, cv2)
-                    if image: reply['portrait'] = image
+                    if image:
+                        reply['portrait'] = image
+                        skin = sample_skin(result.face_landmarks[0], frame, np)
+                        if skin is not None: reply['skin_rgb'] = skin
                 print(json.dumps(reply), flush=True)
             except Exception as exc:
                 print(json.dumps({'type': 'error', 'message': str(exc)}), flush=True)

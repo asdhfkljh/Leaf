@@ -22,6 +22,18 @@ public class HeadFaceFusion : MonoBehaviour
     [Header("Face region on original head (normalized bounds)")]
     [SerializeField] private Vector2 faceHorizontalRange = new Vector2(.12f, .88f);
     [SerializeField] private Vector2 faceVerticalRange = new Vector2(.25f, .92f);
+    [Header("Skin colour matching")]
+    [SerializeField] private bool matchSkinColour = true;
+    [SerializeField, Range(0, 1)] private float skinColourStrength = 1f;
+    [SerializeField, Range(.5f, 1.5f)] private float skinBrightness = 1f;
+    [SerializeField, Range(0, 1)] private float skinSmoothness = .2f;
+    private Renderer skinRenderer;
+    private Material[] originalSkinMaterials, skinMaterials;
+    private Color[] originalSkinColours;
+    private float[] originalSmoothness;
+    private string[] skinColourProperties, skinSmoothnessProperties;
+    private Color latestSkinColour, frozenSkinColour;
+    private bool latestHasSkin, frozenHasSkin;
     private readonly ConcurrentQueue<string> messages = new ConcurrentQueue<string>();
     private Texture2D latestPortrait, frozenPortrait;
     private float portraitAt;
@@ -40,6 +52,7 @@ public class HeadFaceFusion : MonoBehaviour
     {
         public string type, message, portrait;
         public int id;
+        public float[] skin_rgb;
     }
     [Serializable] private class Request { public int id; public string image; public int rotation; }
 
@@ -182,7 +195,63 @@ public class HeadFaceFusion : MonoBehaviour
         portraitMaterial = new Material(shader);
         face.AddComponent<MeshRenderer>().sharedMaterial = portraitMaterial;
         face.SetActive(false);
+        PrepareSkinMaterials(source.GetComponent<Renderer>());
         return true;
+    }
+
+    private void PrepareSkinMaterials(Renderer renderer)
+    {
+        skinRenderer = renderer;
+        originalSkinMaterials = renderer.sharedMaterials;
+        skinMaterials = new Material[originalSkinMaterials.Length];
+        originalSkinColours = new Color[skinMaterials.Length];
+        originalSmoothness = new float[skinMaterials.Length];
+        skinColourProperties = new string[skinMaterials.Length];
+        skinSmoothnessProperties = new string[skinMaterials.Length];
+        for (int i = 0; i < skinMaterials.Length; i++)
+        {
+            var original = originalSkinMaterials[i];
+            if (original == null) continue;
+            var material = skinMaterials[i] = new Material(original);
+            material.name = original.name + " (runtime skin match)";
+            string colour = material.HasProperty("_BaseColor") ? "_BaseColor" : material.HasProperty("_Color") ? "_Color" : null;
+            skinColourProperties[i] = colour;
+            if (colour != null) originalSkinColours[i] = material.GetColor(colour);
+            string gloss = material.HasProperty("_Glossiness") ? "_Glossiness" : material.HasProperty("_Smoothness") ? "_Smoothness" : null;
+            skinSmoothnessProperties[i] = gloss;
+            if (gloss != null) originalSmoothness[i] = material.GetFloat(gloss);
+        }
+        renderer.sharedMaterials = skinMaterials;
+    }
+
+    private static bool TrySkinColour(float[] rgb, out Color colour)
+    {
+        colour = Color.white;
+        if (rgb == null || rgb.Length != 3) return false;
+        foreach (float value in rgb)
+            if (float.IsNaN(value) || float.IsInfinity(value) || value < 0 || value > 1) return false;
+        colour = new Color(rgb[0], rgb[1], rgb[2], 1);
+        return true;
+    }
+
+    private void BlendSkin(float amount)
+    {
+        if (skinMaterials == null) return;
+        float blend = frozenHasSkin && matchSkinColour ? Mathf.Clamp01(amount) * skinColourStrength : 0;
+        for (int i = 0; i < skinMaterials.Length; i++)
+        {
+            var material = skinMaterials[i];
+            if (material == null) continue;
+            if (skinColourProperties[i] != null)
+            {
+                var target = frozenSkinColour * skinBrightness;
+                target.r = Mathf.Clamp01(target.r); target.g = Mathf.Clamp01(target.g); target.b = Mathf.Clamp01(target.b);
+                target.a = originalSkinColours[i].a;
+                material.SetColor(skinColourProperties[i], Color.Lerp(originalSkinColours[i], target, blend));
+            }
+            if (skinSmoothnessProperties[i] != null)
+                material.SetFloat(skinSmoothnessProperties[i], Mathf.Lerp(originalSmoothness[i], Mathf.Min(originalSmoothness[i], skinSmoothness), blend));
+        }
     }
 
     private void StartWorker()
@@ -229,12 +298,13 @@ public class HeadFaceFusion : MonoBehaviour
                         {
                             if (latestPortrait != null) Destroy(latestPortrait);
                             latestPortrait = texture; portraitAt = sentAt;
+                            latestHasSkin = TrySkinColour(reply.skin_rgb, out latestSkinColour);
                         }
                         else Destroy(texture);
                     }
                     catch { Destroy(texture); }
                 }
-                else { if (latestPortrait != null) Destroy(latestPortrait); latestPortrait = null; }
+                else { if (latestPortrait != null) Destroy(latestPortrait); latestPortrait = null; latestHasSkin = false; }
 
             }
         }
@@ -271,6 +341,7 @@ public class HeadFaceFusion : MonoBehaviour
         Cancel();
         if (!ready || workerFailed || portraitMaterial == null || latestPortrait == null || Time.unscaledTime - portraitAt > maximumSnapshotAge)
         { Debug.Log("Face reveal: no fresh frontal face; keeping original head.", this); return; }
+        frozenSkinColour = latestSkinColour; frozenHasSkin = latestHasSkin;
         frozenPortrait = Instantiate(latestPortrait);
         portraitMaterial.mainTexture = frozenPortrait;
         armed = true;
@@ -301,6 +372,7 @@ public class HeadFaceFusion : MonoBehaviour
     }
     private void SetBlend(float amount)
     {
+        BlendSkin(amount);
         if (maskObject == null || portraitMaterial == null) return;
         var face = maskObject.transform.Find("Frozen portrait");
         face.gameObject.SetActive(amount > 0);
@@ -310,6 +382,7 @@ public class HeadFaceFusion : MonoBehaviour
     {
         if (transition != null) StopCoroutine(transition);
         transition = null; armed = false; fadingIn = false; textFinished = false; revealed = false; SetBlend(0);
+        frozenHasSkin = false;
         if (frozenPortrait != null) Destroy(frozenPortrait); frozenPortrait = null;
     }
     private void OnDisable()
@@ -327,6 +400,9 @@ public class HeadFaceFusion : MonoBehaviour
             worker.Dispose(); worker = null;
         }
         if (latestPortrait != null) Destroy(latestPortrait); latestPortrait = null;
+        if (skinRenderer != null && originalSkinMaterials != null) skinRenderer.sharedMaterials = originalSkinMaterials;
+        if (skinMaterials != null) foreach (var material in skinMaterials) if (material != null) Destroy(material);
+        skinMaterials = null; originalSkinMaterials = null; skinRenderer = null; latestHasSkin = false;
         if (portraitMaterial != null) Destroy(portraitMaterial);
         if (portraitMesh != null) Destroy(portraitMesh);
         if (maskObject != null) { maskObject.SetActive(false); Destroy(maskObject); }

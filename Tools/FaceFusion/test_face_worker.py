@@ -111,4 +111,28 @@ class PortraitTests(unittest.TestCase):
         self.points[10].y=float('nan')
         self.assertIsNone(self.portrait(self.points,self.frame,np,cv2))
 
+class SkinColourTests(unittest.TestCase):
+    def setUp(self):
+        fixture = ProportionTests(); fixture.setUp(); self.p = fixture.p
+
+    def test_rgb_order_and_dark_skin(self):
+        from face_worker import sample_skin
+        for bgr in [(80,120,180),(18,30,45)]:
+            frame = np.full((480,640,3),bgr,np.uint8)
+            np.testing.assert_allclose(sample_skin(self.p,frame,np),np.array(bgr[::-1])/255)
+
+    def test_cheeks_ignore_eyes_lips_and_highlight_outliers(self):
+        from face_worker import sample_skin
+        frame = np.full((480,640,3),(80,120,180),np.uint8)
+        frame[140:200,:]=0  # eyes / glasses
+        frame[300:340,:]=(0,0,255)  # lips
+        frame[265:267,210:230]=255  # small cheek highlight
+        np.testing.assert_allclose(sample_skin(self.p,frame,np),[180/255,120/255,80/255])
+
+    def test_invalid_geometry_has_no_colour(self):
+        from face_worker import sample_skin
+        frame = np.zeros((480,640,3),np.uint8)
+        self.p[1].x=float('nan')
+        self.assertIsNone(sample_skin(self.p,frame,np))
+
 if __name__=='__main__': unittest.main()
