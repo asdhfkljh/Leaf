@@ -14,7 +14,8 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     [Header("Scene placement")]
     [SerializeField] private Vector3 worldCenter = new Vector3(0f, 2.12f, 0f);
     [SerializeField, Min(100)] private int particleCount = 2400;
-    [SerializeField, Min(0.001f)] private float particleSize = 0.022f;
+    [Tooltip("Visual diameter of each soft particle. Increase to close gaps without adding particles.")]
+    [SerializeField, Min(0.001f)] private float particleSize = 0.055f;
 
     [Header("Motion")]
     [SerializeField, Min(0.01f)] private float cloudRadius = 0.48f;
@@ -43,6 +44,7 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     private FaceState state = FaceState.Idle;
     private float lowStartedAt;
     private Material runtimeMaterial;
+    private Texture2D runtimeParticleTexture;
 
     public int ParticleCount => particleCount;
 
@@ -63,6 +65,7 @@ public sealed class ParticleFacePrototype : MonoBehaviour
             authority.SequenceCancelled -= OnSequenceCancelled;
         }
         if (runtimeMaterial != null) Destroy(runtimeMaterial);
+        if (runtimeParticleTexture != null) Destroy(runtimeParticleTexture);
     }
 
     private void Update()
@@ -173,6 +176,8 @@ public sealed class ParticleFacePrototype : MonoBehaviour
         if (shader != null)
         {
             runtimeMaterial = new Material(shader) { color = Color.white };
+            runtimeParticleTexture = CreateSoftParticleTexture();
+            runtimeMaterial.mainTexture = runtimeParticleTexture;
             renderer.material = runtimeMaterial;
         }
         particleSystem.Emit(particleCount);
@@ -198,6 +203,30 @@ public sealed class ParticleFacePrototype : MonoBehaviour
             particles[i].remainingLifetime = 9999f;
         }
         particleSystem.SetParticles(particles, particleCount);
+    }
+
+    private static Texture2D CreateSoftParticleTexture()
+    {
+        const int size = 64;
+        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear,
+            name = "Runtime soft particle"
+        };
+        var pixels = new Color32[size * size];
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float u = (x + .5f) / size * 2f - 1f;
+                float v = (y + .5f) / size * 2f - 1f;
+                float distance = Mathf.Sqrt(u * u + v * v);
+                float alpha = 1f - Mathf.SmoothStep(.62f, 1f, distance);
+                pixels[y * size + x] = new Color(1f, 1f, 1f, alpha);
+            }
+        texture.SetPixels32(pixels);
+        texture.Apply(false, true);
+        return texture;
     }
 
     private Vector3 MakeProceduralFacePoint()
