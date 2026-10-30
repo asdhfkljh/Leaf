@@ -352,6 +352,7 @@ GameObject:
   - component: {fileID: 990967482}
   - component: {fileID: 990967483}
   - component: {fileID: 990967484}
+  - component: {fileID: 990967485}
   m_Layer: 0
   m_Name: Authoritycontroller
   m_TagString: Untagged
@@ -1005,7 +1006,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 990967479}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: c810c582da114a4383a8b937957b1742, type: 3}
   m_Name:
@@ -1013,3 +1014,24 @@ MonoBehaviour:
   visualController: {fileID: 990967480}
   head: {fileID: 1232253402}
   morphMesh: {fileID: 4300000, guid: 7e9773fb69d0c463ab60cb1277e58568, type: 2}
+--- !u!114 &990967485
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 990967479}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6d865018b6ea42f09ed20cf7ca60664f, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  head: {fileID: 1232253402}
+  visualController: {fileID: 990967480}
+  showControls: 1
+  automaticRegion: 1
+  region: 1
+  highInfluence: 0.85
+  lowInfluence: 0.2
+  transitionSeconds: 1.5
+  maximumDisplacement: 0.15

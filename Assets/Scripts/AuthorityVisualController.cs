@@ -176,6 +176,7 @@ public class AuthorityVisualController : MonoBehaviour
     private Vector3[][] frozenSpeechVertices;
 
     public event Action HighStarted;
+    public event Action LowStarted;
     public event Action HighMotionStarted;
     public event Action HighTextFinished;
     public event Action SequenceCancelled;
@@ -396,6 +397,7 @@ public class AuthorityVisualController : MonoBehaviour
         SequenceCancelled?.Invoke();
         activeMode = mode;
         if (mode == AuthorityVisualMode.High) HighStarted?.Invoke();
+        else LowStarted?.Invoke();
         sequenceCoroutine = mode == AuthorityVisualMode.High
             ? StartCoroutine(PlayHighSequenceRoutine())
             : StartCoroutine(PlayLowSequenceRoutine());
