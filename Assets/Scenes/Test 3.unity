@@ -705,7 +705,10 @@ MonoBehaviour:
   worldCenter: {x: 0.115, y: 2.6, z: 0}
   particleCount: 16000
   particleSize: 0.028
-  cloudRadius: 0.48
+  cloudRadius: 0.68
+  cloudShellThickness: 0.32
+  cloudSurfaceWaveAmplitude: 0.055
+  cloudSurfaceWaveSpeed: 0.75
   transitionSpeed: 3.2
   lowJitter: 0.16
   lowRecoverySeconds: 1.4

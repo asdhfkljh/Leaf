@@ -59,6 +59,8 @@ OpenSMILE + AuthorityVoiceClassifier ──> High / Low ──> ParticleFaceCont
 
 `MediaPipeParticleFaceBridge` 的 **Face Scale** 在 Test 3 默认设为 `4`，因此只将 MediaPipe 驱动的 High 人脸放大 4 倍；Idle 云团、Low 扰动和文字动画不随之缩放。可在 `Authoritycontroller` 的该组件 Inspector 中继续调整，范围为 0.25–8。
 
+`ParticleFacePrototype` 的 Idle 云团默认是一个半径 `0.68` 的松散球壳，而非填满中心的实心球；`Cloud Shell Thickness` 控制壳层厚度，`Cloud Surface Wave Amplitude` 与 `Cloud Surface Wave Speed` 控制持续的缓慢表面起伏。它们只影响 Idle/Low，不改变 High 人脸。
+
 Test 3 中旧的 `CumulativeFaceFusion` 已关闭，因此不应再出现 `TEST 2 | Cumulative geometry prototype` 的模拟观众面板；Test 2 场景本身未改变。
 
 ## 可运行的第 1 阶段原型：数学脸 + 三态粒子

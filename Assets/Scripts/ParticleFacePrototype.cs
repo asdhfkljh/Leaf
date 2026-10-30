@@ -18,6 +18,11 @@ public sealed class ParticleFacePrototype : MonoBehaviour
 
     [Header("Motion")]
     [SerializeField, Min(0.01f)] private float cloudRadius = 0.48f;
+    [Tooltip("How deep particles extend inward/outward from the loose cloud shell.")]
+    [SerializeField, Range(0f, 0.8f)] private float cloudShellThickness = 0.32f;
+    [Tooltip("Slow radial movement that keeps the Idle cloud surface alive.")]
+    [SerializeField, Range(0f, 0.3f)] private float cloudSurfaceWaveAmplitude = 0.055f;
+    [SerializeField, Range(0.05f, 4f)] private float cloudSurfaceWaveSpeed = 0.75f;
     [SerializeField, Min(0.01f)] private float transitionSpeed = 3.2f;
     [SerializeField, Range(0f, 0.5f)] private float lowJitter = 0.16f;
     [SerializeField, Min(0f)] private float lowRecoverySeconds = 1.4f;
@@ -87,12 +92,18 @@ public sealed class ParticleFacePrototype : MonoBehaviour
             }
             else
             {
-                target = cloudTargets[i] * breathing;
+                Vector3 direction = cloudTargets[i].sqrMagnitude > 0.0001f
+                    ? cloudTargets[i].normalized : Vector3.up;
+                float phase = i * 0.6180339f;
+                float surfaceWave = (Mathf.Sin(Time.time * cloudSurfaceWaveSpeed + phase) +
+                                     Mathf.Sin(Time.time * cloudSurfaceWaveSpeed * 0.53f + phase * 1.7f) * 0.5f)
+                                    * cloudSurfaceWaveAmplitude;
+                target = cloudTargets[i] * breathing + direction * surfaceWave;
                 targetColor = cloudColor;
                 if (lowEnvelope > 0f)
                 {
-                    float phase = Time.time * 9f + i * 0.6180339f;
-                    target += new Vector3(Mathf.Sin(phase), Mathf.Cos(phase * 1.31f), Mathf.Sin(phase * 0.73f))
+                    float lowPhase = Time.time * 9f + i * 0.6180339f;
+                    target += new Vector3(Mathf.Sin(lowPhase), Mathf.Cos(lowPhase * 1.31f), Mathf.Sin(lowPhase * 0.73f))
                         * lowJitter * lowEnvelope;
                 }
             }
@@ -177,7 +188,9 @@ public sealed class ParticleFacePrototype : MonoBehaviour
         Random.InitState(1103);
         for (int i = 0; i < particleCount; i++)
         {
-            cloudTargets[i] = Random.insideUnitSphere * cloudRadius;
+            // Keep the centre open: a loose shell reads as particles, rather than a solid blue disc.
+            float radius = cloudRadius * (1f + Random.Range(-cloudShellThickness, cloudShellThickness));
+            cloudTargets[i] = Random.onUnitSphere * radius;
             faceTargets[i] = MakeProceduralFacePoint();
             faceColors[i] = MakeProceduralFaceColour(faceTargets[i]);
             particles[i].position = cloudTargets[i];
