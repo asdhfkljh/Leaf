@@ -181,10 +181,22 @@ public class RealtimeOpenSmileInput : MonoBehaviour
 
         startRequested = false;
         recordingDevice.OnFrameCollected += OnMicrophoneFrameCollected;
-        if (targetSampleRate > 0)
+        bool requestedRateIsSupported = targetSampleRate > 0 &&
+            (recordingDevice.SupportsAnyFrequency ||
+             (targetSampleRate >= recordingDevice.MinFrequency && targetSampleRate <= recordingDevice.MaxFrequency));
+        if (requestedRateIsSupported)
             recordingDevice.StartRecording(targetSampleRate, Mathf.Max(20, chunkMilliseconds));
         else
+        {
+            if (targetSampleRate > 0)
+            {
+                Debug.LogWarning(
+                    "RealtimeOpenSmileInput: requested sample rate " + targetSampleRate + " Hz is outside " +
+                    activeDevice + "'s supported range [" + recordingDevice.MinFrequency + ", " +
+                    recordingDevice.MaxFrequency + "] Hz. UniMic will use the device default instead.", this);
+            }
             recordingDevice.StartRecording(Mathf.Max(20, chunkMilliseconds));
+        }
 
         if (!recordingDevice.IsRecording)
         {
