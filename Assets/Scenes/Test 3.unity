@@ -702,6 +702,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6e125d627f1a4ec7a6be74bb0c1ced8b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  faceAnchor: {fileID: 1232253402}
   worldCenter: {x: 0.115, y: 2.6, z: 0}
   particleCount: 16000
   particleSize: 0.028

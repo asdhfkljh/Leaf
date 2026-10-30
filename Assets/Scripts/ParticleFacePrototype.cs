@@ -12,6 +12,8 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     public enum FaceState { Idle, Low, High }
 
     [Header("Scene placement")]
+    [Tooltip("The original head transform. When assigned, it fixes the particle system at that model's position.")]
+    [SerializeField] private Transform faceAnchor;
     [SerializeField] private Vector3 worldCenter = new Vector3(0f, 2.12f, 0f);
     [SerializeField, Min(100)] private int particleCount = 2400;
     [SerializeField, Min(0.001f)] private float particleSize = 0.022f;
@@ -154,7 +156,10 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     private void CreateParticleSystem()
     {
         var host = new GameObject("ParticleFaceSystem (runtime)");
-        host.transform.position = worldCenter;
+        if (faceAnchor != null)
+            host.transform.SetParent(faceAnchor, false);
+        else
+            host.transform.position = worldCenter;
         particleSystem = host.AddComponent<ParticleSystem>();
         var main = particleSystem.main;
         main.loop = false;
