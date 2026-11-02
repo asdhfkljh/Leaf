@@ -39,15 +39,29 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     [SerializeField] private Color skinColor = new Color(1f, 0.55f, 0.36f, 0.95f);
     [SerializeField] private Color highlightColor = new Color(1f, 0.88f, 0.67f, 0.95f);
 
+    [Header("High scan-line face")]
+    [Tooltip("Horizontal contours used instead of sparse particles in High mode.")]
+    [SerializeField, Range(24, 120)] private int scanLineCount = 76;
+    [SerializeField, Range(16, 160)] private int scanLinePoints = 88;
+    [SerializeField, Min(0.001f)] private float scanLineWidth = 0.009f;
+    [SerializeField, Range(0f, 0.04f)] private float scanLineFlowAmount = 0.006f;
+    [SerializeField, Min(0f)] private float scanLineFlowSpeed = 0.65f;
+    [SerializeField] private Color scanLineColor = new Color(0.78f, 0.9f, 1f, 0.92f);
+
     private ParticleSystem particleSystem;
     private ParticleSystem.Particle[] particles;
     private Vector3[] cloudTargets;
     private Color[] cloudColors;
     private Vector3[] faceTargets;
     private Color[] faceColors;
+    private LineRenderer[] scanLines;
+    private Vector3[] scanLinePositions;
+    private GameObject scanLineHost;
     private FaceState state = FaceState.Idle;
     private float lowStartedAt;
+    private float scanLineVisibility;
     private Material runtimeMaterial;
+    private Material runtimeLineMaterial;
 
     public int ParticleCount => particleCount;
 
@@ -55,6 +69,7 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     {
         CreateParticleSystem();
         BuildTargets();
+        CreateScanLines();
         SubscribeToAuthorityEvents();
     }
 
@@ -68,6 +83,8 @@ public sealed class ParticleFacePrototype : MonoBehaviour
             authority.SequenceCancelled -= OnSequenceCancelled;
         }
         if (runtimeMaterial != null) Destroy(runtimeMaterial);
+        if (runtimeLineMaterial != null) Destroy(runtimeLineMaterial);
+        if (scanLineHost != null) Destroy(scanLineHost);
     }
 
     private void Update()
@@ -94,6 +111,7 @@ public sealed class ParticleFacePrototype : MonoBehaviour
             {
                 target = faceTargets[i];
                 targetColor = faceColors[i];
+                targetColor.a = 0f;
             }
             else
             {
@@ -117,6 +135,7 @@ public sealed class ParticleFacePrototype : MonoBehaviour
             particles[i].startColor = Color.Lerp((Color)particles[i].startColor, targetColor, blend);
         }
         particleSystem.SetParticles(particles, particles.Length);
+        UpdateScanLines(blend);
     }
 
     public void SetState(FaceState nextState)
@@ -207,6 +226,65 @@ public sealed class ParticleFacePrototype : MonoBehaviour
         particleSystem.SetParticles(particles, particleCount);
     }
 
+    private void CreateScanLines()
+    {
+        scanLineHost = new GameObject("High Scan-Line Face (runtime)");
+        scanLineHost.transform.position = worldCenter;
+        scanLinePositions = new Vector3[scanLinePoints];
+
+        Shader shader = Shader.Find("Legacy Shaders/Particles/Alpha Blended") ?? Shader.Find("Sprites/Default");
+        if (shader == null) return;
+
+        runtimeLineMaterial = new Material(shader) { color = Color.white };
+        scanLines = new LineRenderer[scanLineCount];
+        for (int row = 0; row < scanLineCount; row++)
+        {
+            var lineObject = new GameObject($"Face contour {row + 1:00}");
+            lineObject.transform.SetParent(scanLineHost.transform, false);
+            var line = lineObject.AddComponent<LineRenderer>();
+            line.useWorldSpace = false;
+            line.sharedMaterial = runtimeLineMaterial;
+            line.positionCount = scanLinePoints;
+            line.widthMultiplier = scanLineWidth;
+            line.numCapVertices = 2;
+            line.numCornerVertices = 2;
+            line.textureMode = LineTextureMode.Stretch;
+            scanLines[row] = line;
+        }
+        scanLineHost.SetActive(false);
+    }
+
+    private void UpdateScanLines(float blend)
+    {
+        if (scanLineHost == null || scanLines == null) return;
+
+        float targetVisibility = state == FaceState.High ? 1f : 0f;
+        scanLineVisibility = Mathf.Lerp(scanLineVisibility, targetVisibility, blend);
+        scanLineHost.SetActive(scanLineVisibility > 0.002f);
+        if (scanLineVisibility <= 0.002f) return;
+
+        Color colour = scanLineColor;
+        colour.a *= scanLineVisibility;
+        for (int row = 0; row < scanLines.Length; row++)
+        {
+            float normalizedRow = scanLines.Length == 1 ? 0f : (float)row / (scanLines.Length - 1);
+            float y = Mathf.Lerp(-0.92f, 0.92f, normalizedRow);
+            float halfWidth = 0.68f * Mathf.Sqrt(Mathf.Max(0f, 1f - y * y / (0.92f * 0.92f)));
+            for (int point = 0; point < scanLinePositions.Length; point++)
+            {
+                float normalizedPoint = scanLinePositions.Length == 1 ? 0.5f : (float)point / (scanLinePositions.Length - 1);
+                float x = Mathf.Lerp(-halfWidth, halfWidth, normalizedPoint);
+                float flow = (Mathf.Sin(Time.time * scanLineFlowSpeed + row * 0.43f + point * 0.18f) +
+                              Mathf.Sin(Time.time * scanLineFlowSpeed * 0.61f + row * 0.19f - point * 0.11f) * 0.5f)
+                             * scanLineFlowAmount;
+                scanLinePositions[point] = new Vector3(x, y, GetProceduralFaceDepth(x, y) + flow);
+            }
+            scanLines[row].startColor = colour;
+            scanLines[row].endColor = colour;
+            scanLines[row].SetPositions(scanLinePositions);
+        }
+    }
+
     private Vector3 MakeProceduralFacePoint()
     {
         float latitude = Mathf.Lerp(-1.2f, 1.2f, Random.value);
@@ -223,6 +301,17 @@ public sealed class ParticleFacePrototype : MonoBehaviour
         float mouth = Mathf.Exp(-(x * x * 30f + (y + 0.35f) * (y + 0.35f) * 150f));
         z += nose * 0.26f - (leftEye + rightEye) * 0.065f + mouth * 0.025f;
         return new Vector3(x, y, z);
+    }
+
+    private static float GetProceduralFaceDepth(float x, float y)
+    {
+        float faceCurve = Mathf.Sqrt(Mathf.Max(0f, 1f - x * x / (0.68f * 0.68f) - y * y / (0.92f * 0.92f)));
+        float z = faceCurve * 0.34f - 0.05f;
+        float nose = Mathf.Exp(-(x * x * 22f + (y - 0.02f) * (y - 0.02f) * 9f));
+        float leftEye = Mathf.Exp(-((x + 0.25f) * (x + 0.25f) * 80f + (y - 0.24f) * (y - 0.24f) * 95f));
+        float rightEye = Mathf.Exp(-((x - 0.25f) * (x - 0.25f) * 80f + (y - 0.24f) * (y - 0.24f) * 95f));
+        float mouth = Mathf.Exp(-(x * x * 30f + (y + 0.35f) * (y + 0.35f) * 150f));
+        return z + nose * 0.26f - (leftEye + rightEye) * 0.065f + mouth * 0.025f;
     }
 
     private Color MakeProceduralFaceColour(Vector3 point)
