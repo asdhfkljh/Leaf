@@ -30,7 +30,11 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     [SerializeField] private KeyCode idleKey = KeyCode.I;
 
     [Header("Colour")]
-    [SerializeField] private Color cloudColor = new Color(0.08f, 0.72f, 1f, 0.9f);
+    [Tooltip("Opacity shared by the rainbow colours in the Idle cloud.")]
+    [SerializeField, Range(0f, 1f)] private float cloudColourAlpha = 0.9f;
+    [Tooltip("Keeps the Idle cloud bright rather than producing muted rainbow colours.")]
+    [SerializeField, Range(0f, 1f)] private float cloudColourSaturation = 0.82f;
+    [SerializeField, Range(0f, 1f)] private float cloudColourValue = 1f;
     [SerializeField] private Color shadowColor = new Color(0.20f, 0.07f, 0.10f, 0.95f);
     [SerializeField] private Color skinColor = new Color(1f, 0.55f, 0.36f, 0.95f);
     [SerializeField] private Color highlightColor = new Color(1f, 0.88f, 0.67f, 0.95f);
@@ -38,6 +42,7 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     private ParticleSystem particleSystem;
     private ParticleSystem.Particle[] particles;
     private Vector3[] cloudTargets;
+    private Color[] cloudColors;
     private Vector3[] faceTargets;
     private Color[] faceColors;
     private FaceState state = FaceState.Idle;
@@ -99,7 +104,7 @@ public sealed class ParticleFacePrototype : MonoBehaviour
                                      Mathf.Sin(Time.time * cloudSurfaceWaveSpeed * 0.53f + phase * 1.7f) * 0.5f)
                                     * cloudSurfaceWaveAmplitude;
                 target = cloudTargets[i] * breathing + direction * surfaceWave;
-                targetColor = cloudColor;
+                targetColor = cloudColors[i];
                 if (lowEnvelope > 0f)
                 {
                     float lowPhase = Time.time * 9f + i * 0.6180339f;
@@ -183,6 +188,7 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     private void BuildTargets()
     {
         cloudTargets = new Vector3[particleCount];
+        cloudColors = new Color[particleCount];
         faceTargets = new Vector3[particleCount];
         faceColors = new Color[particleCount];
         Random.InitState(1103);
@@ -191,10 +197,11 @@ public sealed class ParticleFacePrototype : MonoBehaviour
             // Keep the centre open: a loose shell reads as particles, rather than a solid blue disc.
             float radius = cloudRadius * (1f + Random.Range(-cloudShellThickness, cloudShellThickness));
             cloudTargets[i] = Random.onUnitSphere * radius;
+            cloudColors[i] = MakeCloudColour(i);
             faceTargets[i] = MakeProceduralFacePoint();
             faceColors[i] = MakeProceduralFaceColour(faceTargets[i]);
             particles[i].position = cloudTargets[i];
-            particles[i].startColor = cloudColor;
+            particles[i].startColor = cloudColors[i];
             particles[i].remainingLifetime = 9999f;
         }
         particleSystem.SetParticles(particles, particleCount);
@@ -224,5 +231,15 @@ public sealed class ParticleFacePrototype : MonoBehaviour
         Color baseColour = Color.Lerp(shadowColor, skinColor, lighting);
         float highlight = Mathf.Clamp01((point.z - 0.1f) * 2.4f);
         return Color.Lerp(baseColour, highlightColor, highlight * 0.45f);
+    }
+
+    private Color MakeCloudColour(int particleIndex)
+    {
+        // The golden-ratio offset spreads neighbouring particles across the whole spectrum
+        // without creating a visible repeating sequence or clustering one colour together.
+        float hue = Mathf.Repeat(particleIndex * 0.6180339f + Random.Range(-0.045f, 0.045f), 1f);
+        Color colour = Color.HSVToRGB(hue, cloudColourSaturation, cloudColourValue);
+        colour.a = cloudColourAlpha;
+        return colour;
     }
 }
