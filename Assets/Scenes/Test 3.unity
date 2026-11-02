@@ -1136,9 +1136,9 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   enableKeyboardInput: 1
-  fasterKey: 119
-  slowerKey: 115
-  initialLevel: 3
+  fasterKey: 101
+  slowerKey: 100
+  initialLevel: 4
   levelPitches:
   - 0.8
   - 0.9

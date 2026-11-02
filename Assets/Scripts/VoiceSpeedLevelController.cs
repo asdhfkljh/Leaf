@@ -1,23 +1,23 @@
 using UnityEngine;
 
 /// <summary>
-/// Five-step speed control for the player's recorded-voice playback.
+/// Five-step pitch control for the player's recorded-voice playback.
 /// Attach this to the object that owns the playback AudioSource (normally the
 /// same object as RealtimeOpenSmileInput). Disable or remove it to remove both
-/// the W/S controls and its developer overlay.
+/// the E/D controls and its developer overlay.
 /// </summary>
 [DisallowMultipleComponent]
 public class VoiceSpeedLevelController : MonoBehaviour
 {
     [Header("Input")]
     [SerializeField] private bool enableKeyboardInput = true;
-    [SerializeField] private KeyCode fasterKey = KeyCode.W;
-    [SerializeField] private KeyCode slowerKey = KeyCode.S;
+    [SerializeField] private KeyCode fasterKey = KeyCode.E;
+    [SerializeField] private KeyCode slowerKey = KeyCode.D;
 
-    [Header("Five speed levels")]
-    [Tooltip("The selected level when the scene starts. W raises it and S lowers it.")]
-    [SerializeField, Range(1, 5)] private int initialLevel = 3;
-    [Tooltip("AudioSource pitch for each level, from slowest to fastest. Level 3 is natural speed.")]
+    [Header("Five pitch levels")]
+    [Tooltip("The selected level when the scene starts. E raises it and D lowers it.")]
+    [SerializeField, Range(1, 5)] private int initialLevel = 4;
+    [Tooltip("AudioSource pitch for each level, from lowest to highest. Level 3 is natural pitch.")]
     [SerializeField] private float[] levelPitches = { 0.8f, 0.9f, 1f, 1.1f, 1.2f };
 
     [Header("Developer display")]
@@ -34,7 +34,7 @@ public class VoiceSpeedLevelController : MonoBehaviour
     private int currentLevel;
     private GUIStyle overlayStyle;
 
-    /// <summary>Current speed step, in the inclusive range 1 through 5.</summary>
+    /// <summary>Current pitch step, in the inclusive range 1 through 5.</summary>
     public int CurrentLevel => currentLevel;
     public float CurrentPitch => PitchForLevel(currentLevel);
 
@@ -66,7 +66,7 @@ public class VoiceSpeedLevelController : MonoBehaviour
         ApplyPitch();
     }
 
-    /// <summary>Sets the speed step. Useful for UI Buttons or other input systems.</summary>
+    /// <summary>Sets the pitch step. Useful for UI Buttons or other input systems.</summary>
     public void SetLevel(int level)
     {
         int clampedLevel = Mathf.Clamp(level, 1, LevelCount);
@@ -77,8 +77,8 @@ public class VoiceSpeedLevelController : MonoBehaviour
         ApplyPitch();
     }
 
-    public void IncreaseSpeed() => SetLevel(currentLevel + 1);
-    public void DecreaseSpeed() => SetLevel(currentLevel - 1);
+    public void RaisePitch() => SetLevel(currentLevel + 1);
+    public void LowerPitch() => SetLevel(currentLevel - 1);
 
     private float PitchForLevel(int level)
     {
@@ -117,8 +117,8 @@ public class VoiceSpeedLevelController : MonoBehaviour
 
         string bars = new string('■', currentLevel) + new string('□', LevelCount - currentLevel);
         GUI.Label(new Rect(overlayPosition.x, overlayPosition.y, 370f, 30f),
-            "Voice Speed " + currentLevel + "/5  " + bars +
-            "  " + CurrentPitch.ToString("0.0") + "x  (W/S)", overlayStyle);
+            "Voice Pitch " + currentLevel + "/5  " + bars +
+            "  " + CurrentPitch.ToString("0.0") + "x  (E/D)", overlayStyle);
     }
 
     private void OnValidate()
