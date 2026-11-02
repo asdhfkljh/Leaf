@@ -584,13 +584,13 @@ MonoBehaviour:
   speechLanguage: auto
   transcriptionIntervalSeconds: 2
   microphoneDevice: 
-  targetSampleRate: 16000
-  recordingLengthSeconds: 10
+  targetSampleRate: 48000
   chunkMilliseconds: 100
   maximumRecordingSeconds: 180
   autoStart: 0
   enableKeyboardToggle: 1
   toggleRecordingKey: 49
+  playbackVolume: 1
   logFeatureJson: 1
   onFeaturesJsonReceived:
     m_PersistentCalls:
