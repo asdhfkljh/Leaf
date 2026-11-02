@@ -38,6 +38,9 @@ public sealed class MediaPipeParticleFaceBridge : MonoBehaviour
     private float nextSampleAt;
     private Vector3[] positions;
     private Color[] colours;
+    private int[] meshTriangles;
+    private int[] sampleA, sampleB, sampleC;
+    private Vector3[] sampleWeights;
 
     [Serializable] private class Request { public int id; public string image; public int rotation; }
     [Serializable] private class Reply
@@ -48,6 +51,7 @@ public sealed class MediaPipeParticleFaceBridge : MonoBehaviour
         public bool valid;
         public float[] landmarks_flat;
         public float[] landmark_rgb_flat;
+        public int[] mesh_triangles_flat;
     }
 
     private void OnEnable()
@@ -136,13 +140,13 @@ public sealed class MediaPipeParticleFaceBridge : MonoBehaviour
             else if (reply.type == "face" && reply.id == requestId)
             {
                 inFlight = false;
-                if (reply.valid && BuildParticleTargets(reply.landmarks_flat, reply.landmark_rgb_flat))
+                if (reply.valid && BuildParticleTargets(reply.landmarks_flat, reply.landmark_rgb_flat, reply.mesh_triangles_flat))
                     particleFace.SetFaceTargets(positions, colours);
             }
         }
     }
 
-    private bool BuildParticleTargets(float[] landmarks, float[] rgb)
+    private bool BuildParticleTargets(float[] landmarks, float[] rgb, int[] triangles)
     {
         const int landmarkCount = 478;
         if (landmarks == null || rgb == null || landmarks.Length != landmarkCount * 3 || rgb.Length != landmarkCount * 3)
@@ -153,19 +157,66 @@ public sealed class MediaPipeParticleFaceBridge : MonoBehaviour
             positions = new Vector3[count];
             colours = new Color[count];
         }
+        UpdateMeshSamplingPlan(landmarks, triangles, count);
         for (int i = 0; i < count; i++)
         {
-            int index = i % landmarkCount;
-            int offset = index * 3;
+            int a = sampleA == null ? i % landmarkCount : sampleA[i];
+            int b = sampleB == null ? a : sampleB[i];
+            int c = sampleC == null ? a : sampleC[i];
+            Vector3 weights = sampleWeights == null ? Vector3.right : sampleWeights[i];
+            int offsetA = a * 3, offsetB = b * 3, offsetC = c * 3;
             // Face Landmarker: x/y are image normalized; z is relative depth and is negative toward the camera.
-            float x = (landmarks[offset] - .5f) * faceWidth;
-            float y = (.5f - landmarks[offset + 1]) * faceHeight;
-            float z = -landmarks[offset + 2] * faceDepth;
+            float x = ((landmarks[offsetA] * weights.x + landmarks[offsetB] * weights.y + landmarks[offsetC] * weights.z) - .5f) * faceWidth;
+            float y = (.5f - (landmarks[offsetA + 1] * weights.x + landmarks[offsetB + 1] * weights.y + landmarks[offsetC + 1] * weights.z)) * faceHeight;
+            float z = -(landmarks[offsetA + 2] * weights.x + landmarks[offsetB + 2] * weights.y + landmarks[offsetC + 2] * weights.z) * faceDepth;
             Vector3 spread = DeterministicSpread(i) * particleSpread;
             positions[i] = new Vector3(x, y, z) * faceScale + spread;
-            colours[i] = new Color(rgb[offset], rgb[offset + 1], rgb[offset + 2], .96f);
+            colours[i] = new Color(
+                rgb[offsetA] * weights.x + rgb[offsetB] * weights.y + rgb[offsetC] * weights.z,
+                rgb[offsetA + 1] * weights.x + rgb[offsetB + 1] * weights.y + rgb[offsetC + 1] * weights.z,
+                rgb[offsetA + 2] * weights.x + rgb[offsetB + 2] * weights.y + rgb[offsetC + 2] * weights.z, .96f);
         }
         return true;
+    }
+
+    private void UpdateMeshSamplingPlan(float[] landmarks, int[] triangles, int count)
+    {
+        if (triangles == null || triangles.Length < 3 || triangles.Length % 3 != 0 || sampleA != null) return;
+
+        meshTriangles = (int[])triangles.Clone();
+        int triangleCount = meshTriangles.Length / 3;
+        float[] cumulativeAreas = new float[triangleCount];
+        float totalArea = 0f;
+        for (int i = 0; i < triangleCount; i++)
+        {
+            int a = meshTriangles[i * 3] * 3, b = meshTriangles[i * 3 + 1] * 3, c = meshTriangles[i * 3 + 2] * 3;
+            float twiceArea = Mathf.Abs((landmarks[b] - landmarks[a]) * (landmarks[c + 1] - landmarks[a + 1]) -
+                                        (landmarks[c] - landmarks[a]) * (landmarks[b + 1] - landmarks[a + 1]));
+            totalArea += twiceArea;
+            cumulativeAreas[i] = totalArea;
+        }
+        if (totalArea < 0.000001f) return;
+
+        sampleA = new int[count]; sampleB = new int[count]; sampleC = new int[count]; sampleWeights = new Vector3[count];
+        for (int i = 0; i < count; i++)
+        {
+            float pick = Hash01(i * 3 + 1) * totalArea;
+            int triangle = System.Array.BinarySearch(cumulativeAreas, pick);
+            if (triangle < 0) triangle = ~triangle;
+            triangle = Mathf.Clamp(triangle, 0, triangleCount - 1);
+            sampleA[i] = meshTriangles[triangle * 3]; sampleB[i] = meshTriangles[triangle * 3 + 1]; sampleC[i] = meshTriangles[triangle * 3 + 2];
+            float root = Mathf.Sqrt(Hash01(i * 3 + 2));
+            float second = Hash01(i * 3 + 3);
+            sampleWeights[i] = new Vector3(1f - root, root * (1f - second), root * second);
+        }
+    }
+
+    private static float Hash01(int value)
+    {
+        uint hash = (uint)value * 747796405u + 2891336453u;
+        hash = (hash >> ((int)(hash >> 28) + 4)) ^ hash;
+        hash *= 277803737u;
+        return ((hash >> 22) ^ hash) * (1f / 4294967295f);
     }
 
     private static Vector3 DeterministicSpread(int index)

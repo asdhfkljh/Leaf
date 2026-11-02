@@ -26,6 +26,8 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     [SerializeField, Min(0.01f)] private float transitionSpeed = 3.2f;
     [SerializeField, Range(0f, 0.5f)] private float lowJitter = 0.16f;
     [SerializeField, Min(0f)] private float lowRecoverySeconds = 1.4f;
+    [Tooltip("Keep the tracked face that was available when High began, so later tracking frames cannot thin or wobble the reveal.")]
+    [SerializeField] private bool lockFaceTargetDuringHigh = true;
     [SerializeField] private bool enableKeyboardPreview = true;
     [SerializeField] private KeyCode idleKey = KeyCode.I;
 
@@ -40,7 +42,11 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     private Vector3[] cloudTargets;
     private Vector3[] faceTargets;
     private Color[] faceColors;
+    private Vector3[] lockedFaceTargets;
+    private Color[] lockedFaceColors;
     private FaceState state = FaceState.Idle;
+    private bool hasTrackedFaceTargets;
+    private bool hasLockedHighTarget;
     private float lowStartedAt;
     private Material runtimeMaterial;
 
@@ -87,8 +93,8 @@ public sealed class ParticleFacePrototype : MonoBehaviour
             Color targetColor;
             if (state == FaceState.High)
             {
-                target = faceTargets[i];
-                targetColor = faceColors[i];
+                target = hasLockedHighTarget ? lockedFaceTargets[i] : faceTargets[i];
+                targetColor = hasLockedHighTarget ? lockedFaceColors[i] : faceColors[i];
             }
             else
             {
@@ -117,6 +123,14 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     public void SetState(FaceState nextState)
     {
         if (nextState == FaceState.Low && state != FaceState.Low) lowStartedAt = Time.time;
+        if (nextState == FaceState.High && state != FaceState.High)
+        {
+            hasLockedHighTarget = false;
+            if (lockFaceTargetDuringHigh && hasTrackedFaceTargets)
+                CaptureHighTarget();
+        }
+        else if (nextState != FaceState.High)
+            hasLockedHighTarget = false;
         state = nextState;
     }
 
@@ -131,7 +145,24 @@ public sealed class ParticleFacePrototype : MonoBehaviour
             faceTargets[i] = positions[i];
             faceColors[i] = colours == null ? skinColor : colours[i];
         }
+        hasTrackedFaceTargets = true;
+        // If High was requested before the first valid camera frame, lock that first
+        // usable target rather than allowing later tracking frames to replace it.
+        if (state == FaceState.High && lockFaceTargetDuringHigh && !hasLockedHighTarget)
+            CaptureHighTarget();
         return true;
+    }
+
+    private void CaptureHighTarget()
+    {
+        if (lockedFaceTargets == null || lockedFaceTargets.Length != particleCount)
+        {
+            lockedFaceTargets = new Vector3[particleCount];
+            lockedFaceColors = new Color[particleCount];
+        }
+        System.Array.Copy(faceTargets, lockedFaceTargets, particleCount);
+        System.Array.Copy(faceColors, lockedFaceColors, particleCount);
+        hasLockedHighTarget = true;
     }
 
     private void OnHighStarted() => SetState(FaceState.High);

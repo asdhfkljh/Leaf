@@ -121,6 +121,48 @@ def point_cloud_data(landmarks, frame, np):
     return points, colours
 
 
+def face_mesh_triangles(landmarks, np, cv2):
+    """Make a stable 2D triangulation of the detected face surface.
+
+    The Tasks-only MediaPipe wheel intentionally does not ship the legacy
+    FACEMESH_TESSELATION constants. Delaunay triangulation gives the same
+    useful surface for particle sampling, and the face-oval test removes the
+    outer triangles that would otherwise bridge the background.
+    """
+    points = np.array([(round(v.x * 10000), round(v.y * 10000)) for v in landmarks], dtype=np.int32)
+    subdivision = cv2.Subdiv2D((0, 0, 10001, 10001))
+    lookup = {}
+    for index, point in enumerate(points):
+        key = (int(point[0]), int(point[1]))
+        if key not in lookup:
+            subdivision.insert(key)
+            lookup[key] = index
+    oval_indices = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,
+                    152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109]
+    oval = points[oval_indices].astype(np.float32)
+    triangles = []
+    seen = set()
+    for raw in subdivision.getTriangleList():
+        vertices = raw.reshape(3, 2)
+        centre = vertices.mean(axis=0)
+        if cv2.pointPolygonTest(oval, (float(centre[0]), float(centre[1])), False) < 0:
+            continue
+        indices = []
+        for vertex in vertices:
+            nearest = int(np.argmin(np.sum((points - vertex) ** 2, axis=1)))
+            if np.sum((points[nearest] - vertex) ** 2) > 9:
+                indices = []
+                break
+            indices.append(nearest)
+        if len(set(indices)) != 3:
+            continue
+        key = tuple(sorted(indices))
+        if key not in seen:
+            seen.add(key)
+            triangles.extend(indices)
+    return triangles
+
+
 def main():
     import cv2
     import mediapipe as mp
@@ -148,10 +190,13 @@ def main():
                 if ratios:
                     reply.update(ratios)
                 if result.face_landmarks:
+                    triangles = face_mesh_triangles(result.face_landmarks[0], np, cv2)
                     points, colours = point_cloud_data(result.face_landmarks[0], frame, np)
                     if points is not None:
                         reply['landmarks_flat'] = points
                         reply['landmark_rgb_flat'] = colours
+                        # Topology is stable; Unity caches this after the first valid frame.
+                        reply['mesh_triangles_flat'] = triangles
                     image = portrait(result.face_landmarks[0], frame, np, cv2)
                     if image:
                         reply['portrait'] = image

@@ -59,6 +59,8 @@ OpenSMILE + AuthorityVoiceClassifier ──> High / Low ──> ParticleFaceCont
 
 `MediaPipeParticleFaceBridge` 的 **Face Scale** 在 Test 3 默认设为 `4`，因此只将 MediaPipe 驱动的 High 人脸放大 4 倍；Idle 云团、Low 扰动和文字动画不随之缩放。可在 `Authoritycontroller` 的该组件 Inspector 中继续调整，范围为 0.25–8。
 
+High 人脸不再把 478 个关键点循环复制为全部粒子。Python worker 会从当帧关键点建立脸部三角网格，Unity 按三角形面积在表面内进行重心采样，并插值几何与相机颜色；因此额头、脸颊等低关键点密度区域也会被粒子填满。`ParticleFacePrototype` 的 **Lock Face Target During High** 默认开启：High 开始时锁定最近一张有效人脸，避免后续较差的追踪帧降低已经形成的密度或造成闪动。若希望 High 中持续跟随转头，可在 Inspector 关闭该选项。
+
 `ParticleFacePrototype` 的 Idle 云团默认是一个半径 `0.68` 的松散球壳，而非填满中心的实心球；`Cloud Shell Thickness` 控制壳层厚度，`Cloud Surface Wave Amplitude` 与 `Cloud Surface Wave Speed` 控制持续的缓慢表面起伏。它们只影响 Idle/Low，不改变 High 人脸。
 
 Test 3 中旧的 `CumulativeFaceFusion` 已关闭，因此不应再出现 `TEST 2 | Cumulative geometry prototype` 的模拟观众面板；Test 2 场景本身未改变。
