@@ -197,6 +197,9 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     private void CreateParticleSystem()
     {
         var host = new GameObject("ParticleFaceSystem (runtime)");
+        // The post effect uses this layer as a clean face mask. The particle
+        // system still renders normally through the Main Camera's full culling mask.
+        host.layer = FaceSafeAnalogGrainEffect.FaceMaskLayer;
         host.transform.position = worldCenter;
         particleSystem = host.AddComponent<ParticleSystem>();
         var main = particleSystem.main;
@@ -241,6 +244,7 @@ public sealed class ParticleFacePrototype : MonoBehaviour
             particles[i].remainingLifetime = 9999f;
         }
         particleSystem.SetParticles(particles, particleCount);
+        FaceSafeAnalogGrainEffect.EnsureOn(Camera.main);
     }
 
     private Vector3 MakeProceduralFacePoint()

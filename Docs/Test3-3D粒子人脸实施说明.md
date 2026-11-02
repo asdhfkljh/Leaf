@@ -59,6 +59,19 @@ OpenSMILE + AuthorityVoiceClassifier ──> High / Low ──> ParticleFaceCont
 
 `MediaPipeParticleFaceBridge` 的 **Face Scale** 在 Test 3 默认设为 `4`，因此只将 MediaPipe 驱动的 High 人脸放大 4 倍；Idle 云团、Low 扰动和文字动画不随之缩放。可在 `Authoritycontroller` 的该组件 Inspector 中继续调整，范围为 0.25–8。
 
+### 低照度胶片噪波（人脸保持清晰）
+
+`Assets/Shaders/FaceSafeAnalogGrain.shader` 与 `Assets/Scripts/FaceSafeAnalogGrainEffect.cs` 实现了图二参考的低照度彩色胶片颗粒效果。`ParticleFacePrototype` 创建运行时粒子脸时会自动把效果挂到 Main Camera，并将粒子放到内部遮罩层；后处理先渲染该层为白色遮罩，因此遮罩中的脸保持原始清晰度，其他画面叠加动态颗粒、阴影增强颗粒、轻微 RGB 色散与暗角。
+
+在 Play 模式选中 Main Camera 的 **Face Safe Analog Grain Effect**，可直接调节：
+
+- **Grain Intensity / Grain Size**：总颗粒量与颗粒粗细；参考图二建议从 `0.52 / 1.2` 开始。
+- **Coloured Grain / RGB Split**：彩色颗粒与蓝/红色边缘；夜景想更梦幻可提高到约 `0.5 / 0.9`。
+- **Shadow Grain Boost / Vignette**：仅增强暗部的噪点和四角压暗。
+- **Face Edge Feather**：脸部粒子轮廓的保护范围。脸边缘仍被噪点侵入时调高；保护区太大时调低。
+
+该实现针对当前 Built-in Render Pipeline，不需要安装额外 package。若今后改成 URP，需将同一合成逻辑迁移到 ScriptableRendererFeature / Blit pass。
+
 High 人脸不再把 478 个关键点循环复制为全部粒子。Python worker 会从当帧关键点建立脸部三角网格，Unity 按三角形面积在表面内进行重心采样，并插值几何与相机颜色；因此额头、脸颊等低关键点密度区域也会被粒子填满。`ParticleFacePrototype` 的 **Lock Face Target During High** 默认开启：High 开始时锁定最近一张有效人脸，避免后续较差的追踪帧降低已经形成的密度或造成闪动。若希望 High 中持续跟随转头，可在 Inspector 关闭该选项。
 
 High 开始时，粒子系统会移到两个文字耳朵目标（包含其 Anchor Local Offset）的中点；同时摄像头人脸会以 MediaPipe 左右脸侧关键点的中点重新居中。因此参与者即使不在摄像头画面正中央，粒子脸仍会位于两耳之间，而不会随画面中的横向偏移漂走。
