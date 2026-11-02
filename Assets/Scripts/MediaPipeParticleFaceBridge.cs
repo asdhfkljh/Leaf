@@ -158,6 +158,15 @@ public sealed class MediaPipeParticleFaceBridge : MonoBehaviour
             colours = new Color[count];
         }
         UpdateMeshSamplingPlan(landmarks, triangles, count);
+        // Put the detected face's own ear-line at the local origin. The particle
+        // host is then placed at the authored ear-anchor midpoint on High, so a
+        // participant standing off-centre in the webcam cannot shift the face
+        // away from the flying text.
+        const int leftFaceSide = 234, rightFaceSide = 454;
+        int leftOffset = leftFaceSide * 3, rightOffset = rightFaceSide * 3;
+        float centerX = (landmarks[leftOffset] + landmarks[rightOffset]) * 0.5f;
+        float centerY = (landmarks[leftOffset + 1] + landmarks[rightOffset + 1]) * 0.5f;
+        float centerZ = (landmarks[leftOffset + 2] + landmarks[rightOffset + 2]) * 0.5f;
         for (int i = 0; i < count; i++)
         {
             int a = sampleA == null ? i % landmarkCount : sampleA[i];
@@ -166,9 +175,9 @@ public sealed class MediaPipeParticleFaceBridge : MonoBehaviour
             Vector3 weights = sampleWeights == null ? Vector3.right : sampleWeights[i];
             int offsetA = a * 3, offsetB = b * 3, offsetC = c * 3;
             // Face Landmarker: x/y are image normalized; z is relative depth and is negative toward the camera.
-            float x = ((landmarks[offsetA] * weights.x + landmarks[offsetB] * weights.y + landmarks[offsetC] * weights.z) - .5f) * faceWidth;
-            float y = (.5f - (landmarks[offsetA + 1] * weights.x + landmarks[offsetB + 1] * weights.y + landmarks[offsetC + 1] * weights.z)) * faceHeight;
-            float z = -(landmarks[offsetA + 2] * weights.x + landmarks[offsetB + 2] * weights.y + landmarks[offsetC + 2] * weights.z) * faceDepth;
+            float x = ((landmarks[offsetA] * weights.x + landmarks[offsetB] * weights.y + landmarks[offsetC] * weights.z) - centerX) * faceWidth;
+            float y = (centerY - (landmarks[offsetA + 1] * weights.x + landmarks[offsetB + 1] * weights.y + landmarks[offsetC + 1] * weights.z)) * faceHeight;
+            float z = -((landmarks[offsetA + 2] * weights.x + landmarks[offsetB + 2] * weights.y + landmarks[offsetC + 2] * weights.z) - centerZ) * faceDepth;
             Vector3 spread = DeterministicSpread(i) * particleSpread;
             positions[i] = new Vector3(x, y, z) * faceScale + spread;
             colours[i] = new Color(

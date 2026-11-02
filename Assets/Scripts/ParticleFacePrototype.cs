@@ -125,13 +125,25 @@ public sealed class ParticleFacePrototype : MonoBehaviour
         if (nextState == FaceState.Low && state != FaceState.Low) lowStartedAt = Time.time;
         if (nextState == FaceState.High && state != FaceState.High)
         {
+            AlignHighFaceToEarMidpoint();
             hasLockedHighTarget = false;
             if (lockFaceTargetDuringHigh && hasTrackedFaceTargets)
                 CaptureHighTarget();
         }
         else if (nextState != FaceState.High)
+        {
+            if (state == FaceState.High && particleSystem != null)
+                particleSystem.transform.position = worldCenter;
             hasLockedHighTarget = false;
+        }
         state = nextState;
+    }
+
+    private void AlignHighFaceToEarMidpoint()
+    {
+        var authority = GetComponent<AuthorityVisualController>();
+        if (particleSystem != null && authority != null && authority.TryGetHighEarMidpoint(out Vector3 midpoint))
+            particleSystem.transform.position = midpoint;
     }
 
     /// <summary>Reserved for the MediaPipe bridge. Arrays must match particleCount.</summary>

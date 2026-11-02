@@ -186,6 +186,17 @@ public class AuthorityVisualController : MonoBehaviour
     public float AuthorityScore => authorityScore;
     public bool IsSequencePlaying => sequenceCoroutine != null;
 
+    /// <summary>The midpoint used by the two High text destinations.</summary>
+    public bool TryGetHighEarMidpoint(out Vector3 midpoint)
+    {
+        midpoint = Vector3.zero;
+        if (earAnchor == null) return false;
+        Vector3 first = earAnchor.TransformPoint(anchorLocalOffset);
+        Vector3 second = otherEarAnchor != null ? otherEarAnchor.TransformPoint(anchorLocalOffset) : first;
+        midpoint = (first + second) * 0.5f;
+        return true;
+    }
+
     /// <summary>Show a sparse floating selection for both preview and final recognition results.</summary>
     public void SetSpeechText(string text, bool final = false)
     {
