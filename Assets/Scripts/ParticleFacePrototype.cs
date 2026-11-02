@@ -56,6 +56,7 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     private Color[] faceColors;
     private LineRenderer[] scanLines;
     private Vector3[] scanLinePositions;
+    private Vector3[] scanLineTargets;
     private GameObject scanLineHost;
     private FaceState state = FaceState.Idle;
     private float lowStartedAt;
@@ -155,6 +156,7 @@ public sealed class ParticleFacePrototype : MonoBehaviour
             faceTargets[i] = positions[i];
             faceColors[i] = colours == null ? skinColor : colours[i];
         }
+        BuildScanLineTargetsFromFace(positions);
         return true;
     }
 
@@ -229,10 +231,13 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     private void CreateScanLines()
     {
         scanLineHost = new GameObject("High Scan-Line Face (runtime)");
-        scanLineHost.transform.position = worldCenter;
+        // Share the particle system's origin so scan lines remain aligned when its placement changes.
+        scanLineHost.transform.position = particleSystem.transform.position;
         scanLinePositions = new Vector3[scanLinePoints];
+        scanLineTargets = new Vector3[scanLineCount * scanLinePoints];
+        BuildProceduralScanLineTargets();
 
-        Shader shader = Shader.Find("Legacy Shaders/Particles/Alpha Blended") ?? Shader.Find("Sprites/Default");
+        Shader shader = Shader.Find("Sprites/Default") ?? Shader.Find("Legacy Shaders/Particles/Alpha Blended");
         if (shader == null) return;
 
         runtimeLineMaterial = new Material(shader) { color = Color.white };
@@ -267,21 +272,82 @@ public sealed class ParticleFacePrototype : MonoBehaviour
         colour.a *= scanLineVisibility;
         for (int row = 0; row < scanLines.Length; row++)
         {
-            float normalizedRow = scanLines.Length == 1 ? 0f : (float)row / (scanLines.Length - 1);
-            float y = Mathf.Lerp(-0.92f, 0.92f, normalizedRow);
-            float halfWidth = 0.68f * Mathf.Sqrt(Mathf.Max(0f, 1f - y * y / (0.92f * 0.92f)));
             for (int point = 0; point < scanLinePositions.Length; point++)
             {
-                float normalizedPoint = scanLinePositions.Length == 1 ? 0.5f : (float)point / (scanLinePositions.Length - 1);
-                float x = Mathf.Lerp(-halfWidth, halfWidth, normalizedPoint);
                 float flow = (Mathf.Sin(Time.time * scanLineFlowSpeed + row * 0.43f + point * 0.18f) +
                               Mathf.Sin(Time.time * scanLineFlowSpeed * 0.61f + row * 0.19f - point * 0.11f) * 0.5f)
                              * scanLineFlowAmount;
-                scanLinePositions[point] = new Vector3(x, y, GetProceduralFaceDepth(x, y) + flow);
+                Vector3 target = scanLineTargets[row * scanLinePoints + point];
+                scanLinePositions[point] = target + Vector3.forward * flow;
             }
             scanLines[row].startColor = colour;
             scanLines[row].endColor = colour;
             scanLines[row].SetPositions(scanLinePositions);
+        }
+    }
+
+    private void BuildProceduralScanLineTargets()
+    {
+        if (scanLineTargets == null) return;
+
+        for (int row = 0; row < scanLineCount; row++)
+        {
+            float normalizedRow = scanLineCount == 1 ? 0f : (float)row / (scanLineCount - 1);
+            float y = Mathf.Lerp(-0.92f, 0.92f, normalizedRow);
+            float halfWidth = 0.68f * Mathf.Sqrt(Mathf.Max(0f, 1f - y * y / (0.92f * 0.92f)));
+            for (int point = 0; point < scanLinePoints; point++)
+            {
+                float normalizedPoint = scanLinePoints == 1 ? 0.5f : (float)point / (scanLinePoints - 1);
+                float x = Mathf.Lerp(-halfWidth, halfWidth, normalizedPoint);
+                scanLineTargets[row * scanLinePoints + point] = new Vector3(x, y, GetProceduralFaceDepth(x, y));
+            }
+        }
+    }
+
+    private void BuildScanLineTargetsFromFace(Vector3[] positions)
+    {
+        if (scanLineTargets == null || positions == null || positions.Length == 0) return;
+
+        // The MediaPipe bridge repeats its 478 landmarks to populate the particle cloud.
+        // Sampling only that first set gives us a compact surface source for the scan lines.
+        int landmarkCount = Mathf.Min(478, positions.Length);
+        float minX = positions[0].x, maxX = minX, minY = positions[0].y, maxY = minY;
+        for (int i = 1; i < landmarkCount; i++)
+        {
+            minX = Mathf.Min(minX, positions[i].x);
+            maxX = Mathf.Max(maxX, positions[i].x);
+            minY = Mathf.Min(minY, positions[i].y);
+            maxY = Mathf.Max(maxY, positions[i].y);
+        }
+
+        float centerX = (minX + maxX) * 0.5f;
+        float halfHeight = Mathf.Max(0.001f, (maxY - minY) * 0.5f);
+        float halfWidth = Mathf.Max(0.001f, (maxX - minX) * 0.5f);
+        float centerY = (minY + maxY) * 0.5f;
+        for (int row = 0; row < scanLineCount; row++)
+        {
+            float normalizedRow = scanLineCount == 1 ? 0f : (float)row / (scanLineCount - 1);
+            float y = Mathf.Lerp(minY, maxY, normalizedRow);
+            float profile = Mathf.Sqrt(Mathf.Max(0f, 1f - Mathf.Pow((y - centerY) / halfHeight, 2f)));
+            float rowHalfWidth = halfWidth * profile;
+            for (int point = 0; point < scanLinePoints; point++)
+            {
+                float normalizedPoint = scanLinePoints == 1 ? 0.5f : (float)point / (scanLinePoints - 1);
+                float x = Mathf.Lerp(centerX - rowHalfWidth, centerX + rowHalfWidth, normalizedPoint);
+                float nearestDistance = float.MaxValue;
+                float z = 0f;
+                for (int landmark = 0; landmark < landmarkCount; landmark++)
+                {
+                    Vector3 candidate = positions[landmark];
+                    float dx = candidate.x - x;
+                    float dy = candidate.y - y;
+                    float distance = dx * dx + dy * dy * 1.35f;
+                    if (distance >= nearestDistance) continue;
+                    nearestDistance = distance;
+                    z = candidate.z;
+                }
+                scanLineTargets[row * scanLinePoints + point] = new Vector3(x, y, z);
+            }
         }
     }
 
