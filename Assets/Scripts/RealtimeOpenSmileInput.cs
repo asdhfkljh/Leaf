@@ -59,6 +59,7 @@ public class RealtimeOpenSmileInput : MonoBehaviour
     private float recordingStartedAt;
     private AuthorityVisualController visualController;
     private AudioSource playbackSource;
+    private IndependentVoicePlayback independentPlayback;
     private AudioClip lastRecordingClip;
     private readonly List<float> capturedInterleavedSamples = new List<float>();
     private int capturedChannels;
@@ -113,6 +114,7 @@ public class RealtimeOpenSmileInput : MonoBehaviour
         playbackSource.loop = false;
         playbackSource.spatialBlend = 0f;
         playbackSource.volume = playbackVolume;
+        independentPlayback = GetComponent<IndependentVoicePlayback>();
 
         if (visualController != null)
             visualController.TextEffectFinished += PlayLastRecording;
@@ -536,11 +538,16 @@ public class RealtimeOpenSmileInput : MonoBehaviour
         if (lastRecordingClip == null || playbackSource == null)
             return;
 
-        playbackSource.Stop();
-        playbackSource.clip = lastRecordingClip;
-        playbackSource.volume = playbackVolume;
-        playbackSource.Play();
-        Debug.Log("RealtimeOpenSmileInput: replaying the completed original recording.", this);
+        if (independentPlayback != null)
+            independentPlayback.Play(lastRecordingClip, playbackVolume);
+        else
+        {
+            playbackSource.Stop();
+            playbackSource.clip = lastRecordingClip;
+            playbackSource.volume = playbackVolume;
+            playbackSource.Play();
+        }
+        Debug.Log("RealtimeOpenSmileInput: replaying the completed recording.", this);
     }
 
     private void StopWorker()
