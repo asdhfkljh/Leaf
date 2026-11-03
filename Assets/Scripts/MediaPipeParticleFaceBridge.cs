@@ -28,6 +28,8 @@ public sealed class MediaPipeParticleFaceBridge : MonoBehaviour
     [Tooltip("Uniform scale applied to the detected face only; the Idle cloud is unchanged.")]
     [SerializeField, Range(0.25f, 8f)] private float faceScale = 4f;
     [SerializeField, Range(0f, 0.05f)] private float particleSpread = 0.010f;
+    [Tooltip("Keep the face centred on the text-ear anchors. Disable this to preserve the participant's movement in the camera frame while High is active.")]
+    [SerializeField] private bool recenterFaceAtEarLine = false;
 
     private readonly ConcurrentQueue<string> messages = new ConcurrentQueue<string>();
     private Process worker;
@@ -158,15 +160,17 @@ public sealed class MediaPipeParticleFaceBridge : MonoBehaviour
             colours = new Color[count];
         }
         UpdateMeshSamplingPlan(landmarks, triangles, count);
-        // Put the detected face's own ear-line at the local origin. The particle
-        // host is then placed at the authored ear-anchor midpoint on High, so a
-        // participant standing off-centre in the webcam cannot shift the face
-        // away from the flying text.
+        // By default, preserve image-space motion: an off-centre participant
+        // moves the particle face relative to the High text. The optional
+        // legacy mode re-centres on the ear line for a fixed composition.
         const int leftFaceSide = 234, rightFaceSide = 454;
         int leftOffset = leftFaceSide * 3, rightOffset = rightFaceSide * 3;
-        float centerX = (landmarks[leftOffset] + landmarks[rightOffset]) * 0.5f;
-        float centerY = (landmarks[leftOffset + 1] + landmarks[rightOffset + 1]) * 0.5f;
-        float centerZ = (landmarks[leftOffset + 2] + landmarks[rightOffset + 2]) * 0.5f;
+        float centerX = recenterFaceAtEarLine
+            ? (landmarks[leftOffset] + landmarks[rightOffset]) * 0.5f : 0.5f;
+        float centerY = recenterFaceAtEarLine
+            ? (landmarks[leftOffset + 1] + landmarks[rightOffset + 1]) * 0.5f : 0.5f;
+        float centerZ = recenterFaceAtEarLine
+            ? (landmarks[leftOffset + 2] + landmarks[rightOffset + 2]) * 0.5f : 0f;
         for (int i = 0; i < count; i++)
         {
             int a = sampleA == null ? i % landmarkCount : sampleA[i];

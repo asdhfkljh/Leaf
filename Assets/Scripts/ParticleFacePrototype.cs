@@ -26,8 +26,8 @@ public sealed class ParticleFacePrototype : MonoBehaviour
     [SerializeField, Min(0.01f)] private float transitionSpeed = 3.2f;
     [SerializeField, Range(0f, 0.5f)] private float lowJitter = 0.16f;
     [SerializeField, Min(0f)] private float lowRecoverySeconds = 1.4f;
-    [Tooltip("Keep the tracked face that was available when High began, so later tracking frames cannot thin or wobble the reveal.")]
-    [SerializeField] private bool lockFaceTargetDuringHigh = true;
+    [Tooltip("Freeze the tracked face when High begins. Disable this for the particle face to follow a participant who moves while High is active.")]
+    [SerializeField] private bool lockFaceTargetDuringHigh = false;
     [SerializeField] private bool enableKeyboardPreview = true;
     [SerializeField] private KeyCode idleKey = KeyCode.I;
 

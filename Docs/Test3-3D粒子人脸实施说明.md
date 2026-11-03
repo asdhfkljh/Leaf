@@ -72,9 +72,9 @@ OpenSMILE + AuthorityVoiceClassifier ──> High / Low ──> ParticleFaceCont
 
 该实现针对当前 Built-in Render Pipeline，不需要安装额外 package。若今后改成 URP，需将同一合成逻辑迁移到 ScriptableRendererFeature / Blit pass。
 
-High 人脸不再把 478 个关键点循环复制为全部粒子。Python worker 会从当帧关键点建立脸部三角网格，Unity 按三角形面积在表面内进行重心采样，并插值几何与相机颜色；因此额头、脸颊等低关键点密度区域也会被粒子填满。`ParticleFacePrototype` 的 **Lock Face Target During High** 默认开启：High 开始时锁定最近一张有效人脸，避免后续较差的追踪帧降低已经形成的密度或造成闪动。若希望 High 中持续跟随转头，可在 Inspector 关闭该选项。
+High 人脸不再把 478 个关键点循环复制为全部粒子。Python worker 会从当帧关键点建立脸部三角网格，Unity 按三角形面积在表面内进行重心采样，并插值几何与相机颜色；因此额头、脸颊等低关键点密度区域也会被粒子填满。`ParticleFacePrototype` 的 **Lock Face Target During High** 在 Test 3 默认关闭：High 期间会持续使用最新的有效人脸，参与者在摄像头中左右、上下移动时，粒子脸也会同步移动。若展览需要一次 High 固定为快照，可在 Inspector 开启该选项。`MediaPipeParticleFaceBridge` 的 **Recenter Face At Ear Line** 默认也关闭；开启后会恢复旧的固定构图，将检测到的人脸重新居中到文字耳朵锚点。
 
-High 开始时，粒子系统会移到两个文字耳朵目标（包含其 Anchor Local Offset）的中点；同时摄像头人脸会以 MediaPipe 左右脸侧关键点的中点重新居中。因此参与者即使不在摄像头画面正中央，粒子脸仍会位于两耳之间，而不会随画面中的横向偏移漂走。
+High 开始时，粒子系统会移到两个文字耳朵目标（包含其 Anchor Local Offset）的中点；粒子脸仍保留其相对相机画面的横向与纵向位置，因此参与者移动时会直观反映在画面中。需要固定在两耳之间的构图时，可开启 **Recenter Face At Ear Line**。
 
 `ParticleFacePrototype` 的 Idle 云团默认是一个半径 `0.68` 的松散球壳，而非填满中心的实心球；`Cloud Shell Thickness` 控制壳层厚度，`Cloud Surface Wave Amplitude` 与 `Cloud Surface Wave Speed` 控制持续的缓慢表面起伏。它们只影响 Idle/Low，不改变 High 人脸。
 
